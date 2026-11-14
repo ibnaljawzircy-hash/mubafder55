@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "student": {
+      "title": "Student",
+      "description": "Student profile with registered hours and school details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Student ID or mobile" },
+        "name": { "type": "string", "description": "Student full name", "maxLength": 100 },
+        "mobile": { "type": "string", "description": "Student mobile number", "maxLength": 20 },
+        "stage": { "type": "string", "description": "Educational stage (primary/intermediate)", "enum": ["primary", "intermediate", "all"] },
+        "grade": { "type": "string", "description": "Grade level", "maxLength": 50 },
+        "classroom": { "type": "string", "description": "Classroom code (e.g. 5/1)", "maxLength": 20 },
+        "schoolName": { "type": "string", "description": "School name", "maxLength": 100 },
+        "totalHours": { "type": "number", "description": "Total confirmed volunteer hours" },
+        "completedTasksCount": { "type": "number", "description": "Number of completed initiatives" },
+        "registeredDate": { "type": "string", "description": "Date registered" },
+        "badgeLevel": { "type": "string", "description": "Badge level achieved" }
+      },
+      "required": ["name", "mobile", "stage", "grade", "schoolName"]
+    },
+    "activityProgram": {
+      "title": "ActivityProgram",
+      "description": "Student activity program or initiative under central plan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Program identifier" },
+        "name": { "type": "string", "description": "Program/Initiative name", "maxLength": 200 },
+        "domain": { "type": "string", "description": "Activity domain category" },
+        "domainName": { "type": "string", "description": "Localized domain name" },
+        "stage": { "type": "string", "description": "Educational stage", "enum": ["primary", "intermediate", "all"] },
+        "stageLabel": { "type": "string", "description": "Localized stage label" },
+        "month": { "type": "string", "description": "Program month" },
+        "gregorianDate": { "type": "string", "description": "Date (Gregorian)" },
+        "hijriDate": { "type": "string", "description": "Date (Hijri)" },
+        "organizer": { "type": "string", "description": "Responsible entity/organizer" },
+        "description": { "type": "string", "description": "Program detailed description", "maxLength": 1500 }
+      },
+      "required": ["name", "domain", "stage", "gregorianDate"]
+    },
+    "volunteerTask": {
+      "title": "VolunteerTask",
+      "description": "Volunteer initiative or activity opportunity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Task identifier" },
+        "programId": { "type": "string", "description": "Parent program ID" },
+        "programName": { "type": "string", "description": "Parent program name" },
+        "domain": { "type": "string", "description": "Activity domain" },
+        "title": { "type": "string", "description": "Initiative title", "maxLength": 150 },
+        "description": { "type": "string", "description": "Initiative description", "maxLength": 1000 },
+        "stage": { "type": "string", "description": "Eligible grade stage", "enum": ["primary", "intermediate", "all"] },
+        "hours": { "type": "number", "description": "Volunteer hours credit" },
+        "maxVolunteers": { "type": "number", "description": "Capacity limit" },
+        "date": { "type": "string", "description": "Initiative date" },
+        "time": { "type": "string", "description": "Initiative time" },
+        "location": { "type": "string", "description": "Location at school" },
+        "supervisorName": { "type": "string", "description": "Supervisor name" },
+        "status": { "type": "string", "description": "Status of initiative", "enum": ["open", "in_progress", "completed", "cancelled"] },
+        "checkInCode": { "type": "string", "description": "Passcode or check-in verification" }
+      },
+      "required": ["title", "hours", "stage", "status"]
+    },
+    "volunteerRegistration": {
+      "title": "VolunteerRegistration",
+      "description": "Student registration and participation record for a volunteer task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Registration identifier" },
+        "taskId": { "type": "string", "description": "Associated task ID" },
+        "studentId": { "type": "string", "description": "Student ID/mobile" },
+        "studentName": { "type": "string", "description": "Student name" },
+        "studentMobile": { "type": "string", "description": "Student mobile" },
+        "studentStage": { "type": "string", "description": "Stage of student", "enum": ["primary", "intermediate", "all"] },
+        "registeredAt": { "type": "string", "description": "Registration timestamp" },
+        "attendanceStatus": { "type": "string", "description": "Attendance state", "enum": ["registered", "attended", "absent", "completed"] },
+        "approvalStatus": { "type": "string", "description": "Supervisor approval status", "enum": ["pending", "approved", "rejected"] },
+        "hoursAwarded": { "type": "number", "description": "Hours awarded" },
+        "confirmedAt": { "type": "string", "description": "Confirmation date" },
+        "confirmedBy": { "type": "string", "description": "Supervisor who confirmed" }
+      },
+      "required": ["taskId", "studentId", "studentName", "registeredAt", "attendanceStatus"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "student",
+      "description": "Collection of enrolled students"
+    },
+    "/programs/{programId}": {
+      "schema": "activityProgram",
+      "description": "Collection of activity programs and initiatives"
+    },
+    "/tasks/{taskId}": {
+      "schema": "volunteerTask",
+      "description": "Collection of volunteer initiatives and tasks"
+    },
+    "/registrations/{registrationId}": {
+      "schema": "volunteerRegistration",
+      "description": "Collection of task participation and approvals"
+    }
+  }
+}
