@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
+import { resolveActivityDomainMeta } from '../../utils/programHelpers';
 
 interface AttendanceManagerProps {
   programs: ActivityProgram[];
@@ -359,6 +360,8 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
             const targetTask = tasks.find((t) => t.programId === prog.id);
             const defaultHours = targetTask?.hours || 2;
 
+            const progDomainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
+
             return (
               <div
                 key={prog.id}
@@ -368,11 +371,11 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                 <div className="p-5 sm:p-6 bg-[#fbfbfd] border-b border-black/[0.04] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${progDomainMeta.bgColor} ${progDomainMeta.badgeColor}`}>
+                        {progDomainMeta.name}
+                      </span>
                       <span className="text-[11px] font-medium text-[#0071e3] bg-[#ffffff] border border-black/[0.06] px-2.5 py-0.5 rounded-full">
                         {prog.stageLabel}
-                      </span>
-                      <span className="text-[11px] text-[#86868b]">
-                        {prog.domainName}
                       </span>
                       <span className="text-[11px] text-[#86868b]">·</span>
                       <span className="text-[11px] text-[#86868b] flex items-center gap-1 font-mono">

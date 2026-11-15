@@ -8,6 +8,7 @@ import { ProgramsExplorer } from './components/Programs/ProgramsExplorer';
 import { StudentCertificate } from './components/StudentPortal/StudentCertificate';
 import { StudentDashboard } from './components/StudentPortal/StudentDashboard';
 import { AttendanceManager } from './components/TeacherPortal/AttendanceManager';
+import { NonParticipatingStudents } from './components/TeacherPortal/NonParticipatingStudents';
 import { StudentRoster } from './components/TeacherPortal/StudentRoster';
 import { TeacherDashboard } from './components/TeacherPortal/TeacherDashboard';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from './types';
@@ -208,11 +209,42 @@ export default function App() {
     showToast(`تم استيراد ${newPrograms.length} مبادرة بنجاح من ملف الإكسل`);
   };
 
-  // Update Program (Initiative)
+  // Update Program (Initiative) and sync its tasks/registrations domain & name
   const handleUpdateProgram = (updatedProg: ActivityProgram) => {
     const nextProgs = programs.map((p) => (p.id === updatedProg.id ? updatedProg : p));
     setPrograms(nextProgs);
     saveProgramToFirestore(updatedProg);
+
+    const tasksToUpdate = tasks.filter(
+      (t) =>
+        t.programId === updatedProg.id &&
+        (t.domain !== updatedProg.domain || t.programName !== updatedProg.name)
+    );
+    if (tasksToUpdate.length > 0) {
+      const nextTasks = tasks.map((t) =>
+        t.programId === updatedProg.id
+          ? { ...t, domain: updatedProg.domain, programName: updatedProg.name }
+          : t
+      );
+      setTasks(nextTasks);
+      tasksToUpdate.forEach((t) =>
+        saveTaskToFirestore({ ...t, domain: updatedProg.domain, programName: updatedProg.name })
+      );
+    }
+
+    const regsToUpdate = registrations.filter(
+      (r) => r.programId === updatedProg.id && r.programName !== updatedProg.name
+    );
+    if (regsToUpdate.length > 0) {
+      const nextRegs = registrations.map((r) =>
+        r.programId === updatedProg.id ? { ...r, programName: updatedProg.name } : r
+      );
+      setRegistrations(nextRegs);
+      regsToUpdate.forEach((r) =>
+        saveRegistrationToFirestore({ ...r, programName: updatedProg.name })
+      );
+    }
+
     showToast(`تم حفظ تعديلات مبادرة (${updatedProg.name}) بنجاح`);
   };
 
@@ -709,15 +741,175 @@ export default function App() {
     showToast(`تم حذف الطالب (${stu?.name || ''}) بنجاح`);
   };
 
+  // Assign one or more non-participating students to an existing program/task
+  const handleAssignStudentsToInitiative = (
+    studentIds: string[],
+    programId: string,
+    explicitTaskId?: string
+  ) => {
+    const prog = programs.find((p) => p.id === programId);
+    if (!prog) return;
+
+    let targetTask =
+      (explicitTaskId ? tasks.find((t) => t.id === explicitTaskId) : undefined) ||
+      tasks.find((t) => t.programId === programId && t.status !== 'cancelled');
+
+    if (!targetTask) {
+      targetTask = {
+        id: `task-prog-${prog.id}`,
+        programId: prog.id,
+        programName: prog.name,
+        domain: prog.domain,
+        title: `المشاركة والتطوع في ${prog.name}`,
+        description: prog.description,
+        requiredSkills: ['المبادرة', 'التعاون', 'الالتزام'],
+        stage: prog.stage,
+        hours: 2,
+        maxVolunteers: 25,
+        date: prog.gregorianDate.replace(/\//g, '-'),
+        time: '08:00 ص - 10:00 ص',
+        location: prog.organizer || 'مدرسة ابن الجوزي للموهوبين',
+        supervisorName: 'رائد النشاط الطلابي',
+        status: 'open',
+        checkInCode: `VOL-${Math.floor(100 + Math.random() * 900)}`,
+      };
+      setTasks((prev) => [targetTask!, ...prev]);
+      saveTaskToFirestore(targetTask);
+    }
+
+    const nowTs = Date.now();
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const createdRegs: VolunteerRegistration[] = [];
+
+    studentIds.forEach((studentId, index) => {
+      const stu = students.find((s) => s.id === studentId);
+      if (!stu) return;
+      const alreadyExists = registrations.some(
+        (r) => r.taskId === targetTask!.id && r.studentId === studentId
+      );
+      if (alreadyExists) return;
+
+      const reg: VolunteerRegistration = {
+        id: `reg-${nowTs}-${index}`,
+        taskId: targetTask!.id,
+        programId: prog.id,
+        programName: prog.name,
+        studentId: stu.id,
+        studentName: stu.name,
+        studentMobile: stu.mobile,
+        studentStage: stu.stage,
+        registeredAt: nowStr,
+        attendanceStatus: 'registered',
+        approvalStatus: 'approved',
+        hoursAwarded: 0,
+        notes: 'تم ترشيح وإسناد المبادرة للطالب من قسم متابعة غير المشاركين.',
+      };
+      createdRegs.push(reg);
+      saveRegistrationToFirestore(reg);
+    });
+
+    if (createdRegs.length === 0) {
+      showToast('الطلاب المحددون مسجلون بالفعل في هذه المبادرة');
+      return;
+    }
+
+    setRegistrations((prev) => [...createdRegs, ...prev]);
+    showToast(
+      createdRegs.length === 1
+        ? `تم إسناد (${createdRegs[0].studentName}) إلى مبادرة (${prog.name})`
+        : `تم ترشيح وإسناد ${createdRegs.length} طلاب إلى مبادرة (${prog.name})`
+    );
+  };
+
+  // Create a targeted initiative + task for non-participating students and optionally enroll selected students
+  const handleCreateTargetedInitiative = (
+    programData: Omit<ActivityProgram, 'id'>,
+    taskData: Omit<VolunteerTask, 'id' | 'programId' | 'programName' | 'domain' | 'checkInCode'>,
+    studentIdsToEnroll: string[]
+  ) => {
+    const nowTs = Date.now();
+    const newProg: ActivityProgram = {
+      ...programData,
+      id: `prog-${nowTs}`,
+    };
+
+    const newTask: VolunteerTask = {
+      ...taskData,
+      id: `task-${nowTs}`,
+      programId: newProg.id,
+      programName: newProg.name,
+      domain: newProg.domain,
+      checkInCode: `VOL-${Math.floor(100 + Math.random() * 900)}`,
+    };
+
+    setPrograms((prev) => [newProg, ...prev]);
+    setTasks((prev) => [newTask, ...prev]);
+    saveProgramToFirestore(newProg);
+    saveTaskToFirestore(newTask);
+
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const createdRegs: VolunteerRegistration[] = [];
+
+    studentIdsToEnroll.forEach((studentId, index) => {
+      const stu = students.find((s) => s.id === studentId);
+      if (!stu) return;
+      const reg: VolunteerRegistration = {
+        id: `reg-${nowTs}-${index}`,
+        taskId: newTask.id,
+        programId: newProg.id,
+        programName: newProg.name,
+        studentId: stu.id,
+        studentName: stu.name,
+        studentMobile: stu.mobile,
+        studentStage: stu.stage,
+        registeredAt: nowStr,
+        attendanceStatus: 'registered',
+        approvalStatus: 'approved',
+        hoursAwarded: 0,
+        notes: 'مبادرة مخصصة لدمج الطلاب غير المشاركين.',
+      };
+      createdRegs.push(reg);
+      saveRegistrationToFirestore(reg);
+    });
+
+    if (createdRegs.length > 0) {
+      setRegistrations((prev) => [...createdRegs, ...prev]);
+    }
+
+    try {
+      confetti({
+        particleCount: 75,
+        spread: 65,
+        origin: { y: 0.6 },
+      });
+    } catch (e) {}
+
+    showToast(
+      createdRegs.length > 0
+        ? `تم إنشاء مبادرة (${newProg.name}) وإسنادها لـ ${createdRegs.length} طلاب بنجاح`
+        : `تم إنشاء مبادرة (${newProg.name}) بنجاح للطلاب غير المشاركين`
+    );
+  };
+
   // Export full Excel report
   const handleExportExcel = () => {
-    exportVolunteerReportExcel(tasks, registrations, students);
+    exportVolunteerReportExcel(tasks, registrations, students, programs);
     showToast('تم تنزيل تقرير التطوع (Excel)');
   };
 
   const pendingRequestsCount = registrations.filter(
     (r) => r.approvalStatus === 'pending' || r.attendanceStatus === 'registered'
   ).length;
+
+  const nonParticipatingCount = students.filter((stu) => {
+    const stuRegs = registrations.filter((r) => r.studentId === stu.id);
+    const hasActive =
+      stu.totalHours > 0 ||
+      stuRegs.some(
+        (r) => r.attendanceStatus === 'completed' || r.attendanceStatus === 'attended'
+      );
+    return !hasActive;
+  }).length;
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] flex flex-col font-sans text-[#1d1d1f] antialiased">
@@ -735,6 +927,7 @@ export default function App() {
         currentStudent={currentStudent}
         activeTab={activeTab}
         pendingRequestsCount={pendingRequestsCount}
+        nonParticipatingCount={nonParticipatingCount}
         onTabChange={(tab) => setActiveTab(tab)}
         onLogout={handleLogout}
         onRequestSupervisorAccess={handleRequestSupervisorAccess}
@@ -827,6 +1020,19 @@ export default function App() {
             students={students}
             onAddStudents={handleAddStudents}
             onDeleteStudent={handleDeleteStudent}
+          />
+        )}
+
+        {activeTab === 'non-participating' && (
+          <NonParticipatingStudents
+            students={students}
+            programs={programs}
+            tasks={tasks}
+            registrations={registrations}
+            onAssignStudentsToInitiative={handleAssignStudentsToInitiative}
+            onCreateTargetedInitiative={handleCreateTargetedInitiative}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onNotify={showToast}
           />
         )}
       </main>

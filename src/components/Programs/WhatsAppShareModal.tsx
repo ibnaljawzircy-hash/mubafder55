@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Copy, ExternalLink, Share2, X, Sparkles } from 'lucide-react';
 import { ActivityProgram, VolunteerTask } from '../../types';
+import { resolveActivityDomainMeta } from '../../utils/programHelpers';
 
 interface WhatsAppShareModalProps {
   program: ActivityProgram | null;
@@ -19,6 +20,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
 
   if (!isOpen || !program) return null;
 
+  const domainMeta = resolveActivityDomainMeta(program.domain, program.domainName);
   const progTasks = tasks.filter((t) => t.programId === program.id);
   const hours = progTasks.length > 0 ? Math.max(...progTasks.map((t) => t.hours)) : 2;
   const tasksList = progTasks.length > 0
@@ -32,6 +34,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
   const messageText = `✨ *فرصة تطوعية مدرسية جديدة - منصة مُبادر* ✨
 ━━━━━━━━━━━━━━━━━━━━
 📌 *اسم المبادرة:* ${program.name}
+🏷️ *التصنيف:* ${domainMeta.name}
 ⏱️ *عدد الساعات:* ${hours} ساعات معتمدة
 📅 *التاريخ:* ${program.gregorianDate} (${program.month})
 🏫 *المرحلة:* ${program.stageLabel}
@@ -91,6 +94,12 @@ ${shareUrl}
           <div>
             <span className="text-[#86868b] block text-[11px]">المبادرة</span>
             <span className="font-semibold text-[#1d1d1f]">{program.name}</span>
+          </div>
+          <div>
+            <span className="text-[#86868b] block text-[11px]">التصنيف</span>
+            <span className={`font-semibold text-[11px] px-2 py-0.5 rounded-full border inline-block mt-0.5 ${domainMeta.bgColor} ${domainMeta.badgeColor}`}>
+              {domainMeta.name}
+            </span>
           </div>
           <div>
             <span className="text-[#86868b] block text-[11px]">الساعات</span>

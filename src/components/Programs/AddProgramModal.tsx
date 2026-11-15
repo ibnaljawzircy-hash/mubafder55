@@ -30,8 +30,8 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const domainMeta = ACTIVITY_DOMAINS.find((d) => d.id === domain);
-    const domainName = domainMeta ? domainMeta.name : 'نشاط مدرسي';
+    const domainMeta = ACTIVITY_DOMAINS.find((d) => d.id === domain) || ACTIVITY_DOMAINS[0];
+    const domainName = domainMeta.name;
 
     const stageLabel =
       stage === 'all'
@@ -42,7 +42,7 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
 
     onAddProgram({
       name: name.trim(),
-      domain,
+      domain: domainMeta.id,
       domainName,
       stage,
       stageLabel,
@@ -76,16 +76,16 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
 
         <div>
           <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wide">
-            خطة الأنشطة
+            خطة الأنشطة المعتمدة
           </span>
           <h3 className="text-xl font-semibold text-[#1d1d1f] tracking-tight mt-0.5">
-            إضافة برنامج جديد
+            إضافة مبادرة جديدة
           </h3>
         </div>
 
         <div>
           <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-            اسم البرنامج
+            اسم المبادرة / البرنامج *
           </label>
           <input
             type="text"
@@ -97,15 +97,16 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-              المجال
+              تصنيف المبادرة (المجالات الثمانية) *
             </label>
             <select
               value={domain}
-              onChange={(e) => setDomain(e.target.value as any)}
-              className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
+              onChange={(e) => setDomain(e.target.value as ActivityDomain)}
+              className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3] font-medium"
+              required
             >
               {ACTIVITY_DOMAINS.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -113,15 +114,18 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
                 </option>
               ))}
             </select>
+            <span className="block text-[10px] text-[#86868b] mt-1">
+              يظهر التصنيف في بطاقة المبادرة ويُحتسب تلقائياً في الإحصائية.
+            </span>
           </div>
 
           <div>
             <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-              المرحلة المستهدفة
+              المرحلة المستهدفة *
             </label>
             <select
               value={stage}
-              onChange={(e) => setStage(e.target.value as any)}
+              onChange={(e) => setStage(e.target.value as GradeStage)}
               className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
             >
               <option value="all">جميع المراحل</option>
@@ -213,7 +217,7 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
             type="submit"
             className="px-5 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-medium rounded-full transition-colors shadow-none cursor-pointer"
           >
-            إضافة البرنامج
+            إضافة المبادرة
           </button>
         </div>
       </form>

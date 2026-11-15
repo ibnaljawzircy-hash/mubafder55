@@ -7,6 +7,7 @@ interface NavbarProps {
   currentStudent: Student | null;
   activeTab: string;
   pendingRequestsCount?: number;
+  nonParticipatingCount?: number;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
   onRequestSupervisorAccess: () => void;
@@ -19,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentStudent,
   activeTab,
   pendingRequestsCount = 0,
+  nonParticipatingCount = 0,
   onTabChange,
   onLogout,
   onRequestSupervisorAccess,
@@ -149,11 +151,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
             <button
               onClick={() => onTabChange('students')}
-              className={`whitespace-nowrap font-medium transition-colors ${
+              className={`whitespace-nowrap shrink-0 font-medium transition-colors ${
                 activeTab === 'students' ? 'text-[#0071e3] font-semibold' : 'text-[#86868b] hover:text-[#1d1d1f]'
               }`}
             >
               الطلاب واستيراد إكسل
+            </button>
+            <button
+              onClick={() => onTabChange('non-participating')}
+              className={`whitespace-nowrap shrink-0 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === 'non-participating' ? 'text-[#0071e3] font-semibold' : 'text-[#86868b] hover:text-[#1d1d1f]'
+              }`}
+            >
+              <span>الطلاب غير المشاركين</span>
+              {nonParticipatingCount > 0 && (
+                <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight font-mono tabular-nums">
+                  {nonParticipatingCount}
+                </span>
+              )}
             </button>
           </div>
         )}

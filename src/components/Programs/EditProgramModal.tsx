@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Trash2, X, Edit3, AlertTriangle } from 'lucide-react';
 import { ACTIVITY_DOMAINS } from '../../data/yanbuPlanData';
 import { ActivityDomain, ActivityProgram, GradeStage } from '../../types';
+import { resolveActivityDomainMeta } from '../../utils/programHelpers';
 
 interface EditProgramModalProps {
   program: ActivityProgram | null;
@@ -31,8 +32,9 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
 
   useEffect(() => {
     if (program) {
+      const resolvedMeta = resolveActivityDomainMeta(program.domain, program.domainName);
       setName(program.name);
-      setDomain(program.domain);
+      setDomain(resolvedMeta.id);
       setStage(program.stage);
       setMonth(program.month);
       setGregorianDate(program.gregorianDate);
@@ -50,8 +52,8 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const domainMeta = ACTIVITY_DOMAINS.find((d) => d.id === domain);
-    const domainName = domainMeta ? domainMeta.name : program.domainName;
+    const domainMeta = ACTIVITY_DOMAINS.find((d) => d.id === domain) || ACTIVITY_DOMAINS[0];
+    const domainName = domainMeta.name;
 
     const stageLabel =
       stage === 'all'
@@ -63,7 +65,7 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
     onUpdateProgram({
       ...program,
       name: name.trim(),
-      domain,
+      domain: domainMeta.id,
       domainName,
       stage,
       stageLabel,
@@ -150,15 +152,16 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-                المجال
+                تصنيف المبادرة (المجالات الثمانية) *
               </label>
               <select
                 value={domain}
-                onChange={(e) => setDomain(e.target.value as any)}
-                className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
+                onChange={(e) => setDomain(e.target.value as ActivityDomain)}
+                className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3] font-medium"
+                required
               >
                 {ACTIVITY_DOMAINS.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -166,15 +169,18 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
                   </option>
                 ))}
               </select>
+              <span className="block text-[10px] text-[#86868b] mt-1">
+                تحديث التصنيف ينعكس مباشرة على إحصائيات المجالات الثمانية.
+              </span>
             </div>
 
             <div>
               <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-                المرحلة المستهدفة
+                المرحلة المستهدفة *
               </label>
               <select
                 value={stage}
-                onChange={(e) => setStage(e.target.value as any)}
+                onChange={(e) => setStage(e.target.value as GradeStage)}
                 className="w-full px-3 py-2.5 text-[12px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
               >
                 <option value="all">جميع المراحل</option>

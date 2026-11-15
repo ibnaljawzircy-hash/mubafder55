@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Activity,
+  AlertCircle,
   Award,
   BarChart3,
   Calendar,
@@ -12,6 +13,7 @@ import {
   HeartHandshake,
   Percent,
   Plus,
+  Send,
   Shield,
   Star,
   TrendingUp,
@@ -20,6 +22,11 @@ import {
 } from 'lucide-react';
 import { ACTIVITY_DOMAINS } from '../../data/yanbuPlanData';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
+import {
+  resolveProgramDomainId,
+  resolveRegistrationDomainId,
+  resolveTaskDomainId,
+} from '../../utils/programHelpers';
 
 interface TeacherDashboardProps {
   programs?: ActivityProgram[];
@@ -103,22 +110,41 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     .filter((r) => r.studentStage === 'intermediate' && r.attendanceStatus === 'completed')
     .reduce((sum, r) => sum + r.hoursAwarded, 0);
 
-  // Domain breakdown
+  // Domain breakdown (authoritative based on initiative classification in the 8 domains)
   const domainStats = ACTIVITY_DOMAINS.map((domain) => {
-    const domainTasks = tasks.filter((t) => t.domain === domain.id);
-    const domainTaskIds = new Set(domainTasks.map((t) => t.id));
+    const domainPrograms = programs.filter((p) => resolveProgramDomainId(p) === domain.id);
+    const domainTasks = tasks.filter((t) => resolveTaskDomainId(t, programs) === domain.id);
     const domainRegs = registrations.filter(
-      (r) => domainTaskIds.has(r.taskId) && r.attendanceStatus === 'completed'
+      (r) =>
+        r.attendanceStatus === 'completed' &&
+        resolveRegistrationDomainId(r, tasks, programs) === domain.id
     );
     const domainHours = domainRegs.reduce((sum, r) => sum + r.hoursAwarded, 0);
 
     return {
       ...domain,
+      programCount: domainPrograms.length,
       taskCount: domainTasks.length,
       volunteerCount: domainRegs.length,
       hours: domainHours,
     };
   });
+
+  // Non-participating students (0 certified hours and no attended/completed participation)
+  const nonParticipatingStudents = students.filter((stu) => {
+    const stuRegs = registrations.filter((r) => r.studentId === stu.id);
+    const hasActive =
+      stu.totalHours > 0 ||
+      stuRegs.some(
+        (r) => r.attendanceStatus === 'completed' || r.attendanceStatus === 'attended'
+      );
+    return !hasActive;
+  });
+
+  const neverRegisteredCount = nonParticipatingStudents.filter(
+    (stu) => !registrations.some((r) => r.studentId === stu.id)
+  ).length;
+  const incompleteOnlyCount = nonParticipatingStudents.length - neverRegisteredCount;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -153,15 +179,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <button
               onClick={() => onNavigate('programs')}
-              className="px-4 py-2 bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[13px] font-medium rounded-full transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[13px] font-medium rounded-full transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
               <Plus className="w-4 h-4 text-[#0071e3]" />
               <span>إدارة المبادرات</span>
             </button>
 
             <button
+              onClick={() => onNavigate('non-participating')}
+              className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[13px] font-medium rounded-full border border-amber-200/80 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span>غير المشاركين</span>
+              <span className="font-mono tabular-nums font-bold">({nonParticipatingStudents.length})</span>
+            </button>
+
+            <button
               onClick={onExportExcel}
-              className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[13px] font-medium rounded-full transition-colors flex items-center gap-1.5 border border-emerald-200/80 cursor-pointer"
+              className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[13px] font-medium rounded-full transition-colors flex items-center gap-1.5 border border-emerald-200/80 cursor-pointer whitespace-nowrap shrink-0"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span>تصدير تقرير إكسل</span>
@@ -420,11 +455,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               return (
                 <div key={d.id} className="p-3.5 bg-[#f5f5f7] rounded-2xl space-y-1.5">
-                  <div className="flex items-center justify-between text-[12px]">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-[#1d1d1f]">{d.name}</span>
-                      <span className="text-[#86868b]">·</span>
-                      <span className="text-[#86868b] font-mono">{d.taskCount} مهمة</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`font-semibold px-2.5 py-0.5 rounded-full text-[11px] border ${d.bgColor} ${d.badgeColor}`}>
+                        {d.name}
+                      </span>
+                      <span className="text-[#86868b] font-mono text-[11px]">
+                        {d.programCount} مبادرة · {d.taskCount} مهمة
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 font-mono tabular-nums">
                       <span className="text-[#86868b]">{d.volunteerCount} مشاركة</span>
@@ -522,6 +560,84 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Non-Participating Students Follow-up Section */}
+      <div className="bg-[#ffffff] rounded-3xl p-6 sm:p-7 border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[12px] text-[#86868b]">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span>متابعة المشاركة الطلابية</span>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono tabular-nums">
+                {nonParticipatingStudents.length} طالب بدون ساعات تطوعية
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold text-[#1d1d1f]">
+              الطلاب غير المشاركين — للمتابعة والتحفيز وتخصيص المبادرات
+            </h3>
+            <p className="text-[12px] text-[#86868b]">
+              لم يسجلوا: <span className="font-mono font-semibold text-[#1d1d1f] tabular-nums">{neverRegisteredCount}</span>
+              <span className="mx-2" aria-hidden="true">·</span>
+              مسجلون دون اعتماد ساعات: <span className="font-mono font-semibold text-[#1d1d1f] tabular-nums">{incompleteOnlyCount}</span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => onNavigate('non-participating')}
+              className="px-4 py-2.5 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-medium rounded-full transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>فتح قسم غير المشاركين وتحفيزهم</span>
+            </button>
+          </div>
+        </div>
+
+        {students.length === 0 ? (
+          <div className="py-6 px-4 text-center bg-[#f5f5f7]/70 rounded-2xl border border-dashed border-black/[0.08] text-[12px] text-[#86868b]">
+            أضف الطلاب من سجل الطلاب أو استورد ملف إكسل لرصد غير المشاركين تلقائياً ومتابعتهم.
+          </div>
+        ) : nonParticipatingStudents.length === 0 ? (
+          <div className="py-6 px-4 text-center bg-emerald-50/70 rounded-2xl border border-emerald-200/70 text-[13px] font-medium text-emerald-900">
+            جميع الطلاب المضافين لديهم مشاركات فعلية أو ساعات تطوعية معتمدة.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {nonParticipatingStudents.slice(0, 4).map((stu) => {
+              const hasReg = registrations.some((r) => r.studentId === stu.id);
+              return (
+                <div
+                  key={stu.id}
+                  className="p-4 bg-[#f5f5f7] rounded-2xl border border-black/[0.04] flex flex-col justify-between gap-2"
+                >
+                  <div>
+                    <span className="text-[13px] font-semibold text-[#1d1d1f] block truncate">
+                      {stu.name}
+                    </span>
+                    <span className="text-[11px] text-[#86868b] block mt-0.5">
+                      {stu.stage === 'primary' ? 'ابتدائي' : 'متوسط'} · {stu.grade} · {stu.classroom}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-black/[0.05] text-[11px]">
+                    <span className={hasReg ? 'text-[#0071e3] font-medium' : 'text-amber-700 font-medium'}>
+                      {hasReg ? 'مسجل ولم يكمل' : 'لم يسجل بعد'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('non-participating')}
+                      className="text-[#0071e3] hover:underline font-medium cursor-pointer"
+                    >
+                      متابعة ←
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

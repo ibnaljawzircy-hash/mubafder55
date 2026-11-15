@@ -46,10 +46,20 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify(errInfo));
 }
 
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned as T;
+}
+
 // Test Connection on startup
 export async function testFirebaseConnection() {
   try {
-    await getDocFromServer(doc(db, '_connection_test', 'ping'));
+    await getDocFromServer(doc(db, 'programs', '_connection_ping'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn('Firebase client is offline, using offline cache/local state.');
@@ -72,7 +82,7 @@ export async function seedInitialFirestoreData() {
     const programsSnap = await getDocs(collection(db, PROGRAMS_COLLECTION));
     if (programsSnap.empty) {
       for (const prog of YANBU_PROGRAMS) {
-        await setDoc(doc(db, PROGRAMS_COLLECTION, prog.id), prog);
+        await setDoc(doc(db, PROGRAMS_COLLECTION, prog.id), stripUndefined({ ...prog }));
       }
     }
 
@@ -80,7 +90,7 @@ export async function seedInitialFirestoreData() {
     const tasksSnap = await getDocs(collection(db, TASKS_COLLECTION));
     if (tasksSnap.empty) {
       for (const task of INITIAL_VOLUNTEER_TASKS) {
-        await setDoc(doc(db, TASKS_COLLECTION, task.id), task);
+        await setDoc(doc(db, TASKS_COLLECTION, task.id), stripUndefined({ ...task }));
       }
     }
 
@@ -133,12 +143,15 @@ export async function seedInitialFirestoreData() {
           stu.completedTasksCount !== completedTasksCount ||
           stu.badgeLevel !== badgeLevel
         ) {
-          await setDoc(doc(db, STUDENTS_COLLECTION, stu.id), {
-            ...stu,
-            totalHours,
-            completedTasksCount,
-            badgeLevel,
-          });
+          await setDoc(
+            doc(db, STUDENTS_COLLECTION, stu.id),
+            stripUndefined({
+              ...stu,
+              totalHours,
+              completedTasksCount,
+              badgeLevel,
+            })
+          );
         }
       }
 
@@ -215,7 +228,7 @@ export function subscribeToRegistrations(onUpdate: (regs: VolunteerRegistration[
 // Program (Initiative) mutations
 export async function saveProgramToFirestore(program: ActivityProgram) {
   try {
-    await setDoc(doc(db, PROGRAMS_COLLECTION, program.id), program);
+    await setDoc(doc(db, PROGRAMS_COLLECTION, program.id), stripUndefined({ ...program }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${PROGRAMS_COLLECTION}/${program.id}`);
   }
@@ -224,7 +237,7 @@ export async function saveProgramToFirestore(program: ActivityProgram) {
 export async function saveMultipleProgramsToFirestore(programs: ActivityProgram[]) {
   try {
     for (const p of programs) {
-      await setDoc(doc(db, PROGRAMS_COLLECTION, p.id), p);
+      await setDoc(doc(db, PROGRAMS_COLLECTION, p.id), stripUndefined({ ...p }));
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, PROGRAMS_COLLECTION);
@@ -242,7 +255,7 @@ export async function deleteProgramFromFirestore(programId: string) {
 // Student mutations
 export async function saveStudentToFirestore(student: Student) {
   try {
-    await setDoc(doc(db, STUDENTS_COLLECTION, student.id), student);
+    await setDoc(doc(db, STUDENTS_COLLECTION, student.id), stripUndefined({ ...student }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${STUDENTS_COLLECTION}/${student.id}`);
   }
@@ -251,7 +264,7 @@ export async function saveStudentToFirestore(student: Student) {
 export async function saveMultipleStudentsToFirestore(students: Student[]) {
   try {
     for (const s of students) {
-      await setDoc(doc(db, STUDENTS_COLLECTION, s.id), s);
+      await setDoc(doc(db, STUDENTS_COLLECTION, s.id), stripUndefined({ ...s }));
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, STUDENTS_COLLECTION);
@@ -269,7 +282,7 @@ export async function deleteStudentFromFirestore(studentId: string) {
 // Task mutations
 export async function saveTaskToFirestore(task: VolunteerTask) {
   try {
-    await setDoc(doc(db, TASKS_COLLECTION, task.id), task);
+    await setDoc(doc(db, TASKS_COLLECTION, task.id), stripUndefined({ ...task }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${TASKS_COLLECTION}/${task.id}`);
   }
@@ -286,7 +299,7 @@ export async function deleteTaskFromFirestore(taskId: string) {
 // Registration mutations
 export async function saveRegistrationToFirestore(reg: VolunteerRegistration) {
   try {
-    await setDoc(doc(db, REGISTRATIONS_COLLECTION, reg.id), reg);
+    await setDoc(doc(db, REGISTRATIONS_COLLECTION, reg.id), stripUndefined({ ...reg }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${REGISTRATIONS_COLLECTION}/${reg.id}`);
   }

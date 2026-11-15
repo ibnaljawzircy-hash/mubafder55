@@ -68,10 +68,11 @@ export const StudentRoster: React.FC<StudentRosterProps> = ({
     e.preventDefault();
     if (!name.trim() || !mobile.trim()) return;
 
+    const cleanMobile = mobile.trim().replace(/[\s-]/g, '');
     const newStudent: Student = {
-      id: mobile.trim(),
+      id: cleanMobile,
       name: name.trim(),
-      mobile: mobile.trim(),
+      mobile: cleanMobile,
       stage,
       grade,
       classroom,

@@ -1,4 +1,95 @@
-import { ActivityProgram } from '../types';
+import { ACTIVITY_DOMAINS } from '../data/yanbuPlanData';
+import {
+  ActivityDomain,
+  ActivityDomainMeta,
+  ActivityProgram,
+  VolunteerRegistration,
+  VolunteerTask,
+} from '../types';
+
+/**
+ * Resolves any program/task domain identifier or Arabic name strictly to one of the 8 ACTIVITY_DOMAINS
+ */
+export const resolveActivityDomainMeta = (
+  domain?: ActivityDomain | string,
+  domainName?: string
+): ActivityDomainMeta => {
+  if (domain) {
+    const byId = ACTIVITY_DOMAINS.find((d) => d.id === domain);
+    if (byId) return byId;
+  }
+
+  const normalizedName = (domainName || '').trim();
+  if (normalizedName) {
+    const byName = ACTIVITY_DOMAINS.find((d) => d.name === normalizedName);
+    if (byName) return byName;
+  }
+
+  const text = `${domain || ''} ${normalizedName}`.trim().toLowerCase();
+  if (text.includes('ثقاف') || text.includes('فن') || text.includes('قراء') || text.includes('إلقاء') || text.includes('مسرح')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'cultural_arts')!;
+  }
+  if (text.includes('مواطن') || text.includes('حياة') || text.includes('تطوع') || text.includes('مجتمع') || text.includes('سلام')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'citizenship_life')!;
+  }
+  if (text.includes('صح') || text.includes('رياض') || text.includes('بدن') || text.includes('دوري')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'health_sports')!;
+  }
+  if (text.includes('كشف')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'scouts')!;
+  }
+  if (text.includes('علم') || text.includes('تقن') || text.includes('روبوت') || text.includes('ذكاء') || text.includes('حاسب')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'science_tech')!;
+  }
+  if (text.includes('مناسب') || text.includes('عالم') || text.includes('وطن') || text.includes('تأسيس') || text.includes('معلم')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'national_world_days')!;
+  }
+  if (text.includes('تعليم') || text.includes('جود') || text.includes('فصل') || text.includes('محاكي')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'educational_initiatives')!;
+  }
+  if (text.includes('جائز') || text.includes('مسابق') || text.includes('تحدي') || text.includes('أولمبياد')) {
+    return ACTIVITY_DOMAINS.find((d) => d.id === 'awards_competitions')!;
+  }
+
+  return ACTIVITY_DOMAINS.find((d) => d.id === 'scouts') || ACTIVITY_DOMAINS[0];
+};
+
+export const resolveProgramDomainId = (
+  program: Pick<ActivityProgram, 'domain' | 'domainName'>
+): ActivityDomain => {
+  return resolveActivityDomainMeta(program.domain, program.domainName).id;
+};
+
+export const resolveTaskDomainId = (
+  task: Pick<VolunteerTask, 'programId' | 'domain'>,
+  programs: ActivityProgram[]
+): ActivityDomain => {
+  const parentProgram = programs.find((p) => p.id === task.programId);
+  if (parentProgram) {
+    return resolveProgramDomainId(parentProgram);
+  }
+  return resolveActivityDomainMeta(task.domain).id;
+};
+
+export const resolveRegistrationDomainId = (
+  reg: VolunteerRegistration,
+  tasks: VolunteerTask[],
+  programs: ActivityProgram[]
+): ActivityDomain | undefined => {
+  const task = tasks.find((t) => t.id === reg.taskId);
+  const parentProgramId = reg.programId || task?.programId;
+  const parentProgram = parentProgramId
+    ? programs.find((p) => p.id === parentProgramId)
+    : undefined;
+
+  if (parentProgram) {
+    return resolveProgramDomainId(parentProgram);
+  }
+  if (task) {
+    return resolveActivityDomainMeta(task.domain).id;
+  }
+  return undefined;
+};
 
 /**
  * Parses gregorianDate string (e.g. '2026/09/06', '2026-11-09', or '٢٠٢٦/٠٩/٠٦') into timestamp

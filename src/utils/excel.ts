@@ -1,6 +1,12 @@
 import * as XLSX from 'xlsx';
 import { ActivityDomain, ActivityProgram, GradeStage, Student, VolunteerRegistration, VolunteerTask } from '../types';
 import { ACTIVITY_DOMAINS } from '../data/yanbuPlanData';
+import {
+  resolveActivityDomainMeta,
+  resolveProgramDomainId,
+  resolveRegistrationDomainId,
+  resolveTaskDomainId,
+} from './programHelpers';
 
 export interface ParseResult {
   success: boolean;
@@ -221,11 +227,21 @@ export async function parseStudentsExcel(file: File): Promise<ParseResult> {
 export function exportVolunteerReportExcel(
   tasks: VolunteerTask[],
   registrations: VolunteerRegistration[],
-  students: Student[]
+  students: Student[],
+  programs: ActivityProgram[] = []
 ) {
   // 1. Sheet: Hours & Attendance Records
   const recordsData = registrations.map((reg, index) => {
     const task = tasks.find((t) => t.id === reg.taskId);
+    const parentProgram = programs.find((p) => p.id === (reg.programId || task?.programId));
+    const domainId = resolveRegistrationDomainId(reg, tasks, programs);
+    const domainMeta = domainId
+      ? ACTIVITY_DOMAINS.find((d) => d.id === domainId)
+      : parentProgram
+      ? resolveActivityDomainMeta(parentProgram.domain, parentProgram.domainName)
+      : task
+      ? resolveActivityDomainMeta(task.domain)
+      : null;
     const student = students.find((s) => s.id === reg.studentId || s.mobile === reg.studentMobile);
 
     return {
@@ -235,10 +251,10 @@ export function exportVolunteerReportExcel(
       'المرحلة الدراسية': reg.studentStage === 'primary' ? 'ابتدائي' : 'متوسط',
       'الصف والفصل': student ? `${student.grade} - ${student.classroom}` : '-',
       'المدرسة': student?.schoolName || 'مدرسة ابن الجوزي للموهوبين',
-      'اسم النشاط / المبادرة': reg.programName || task?.programName || 'مبادرة مدرسية',
+      'اسم النشاط / المبادرة': parentProgram?.name || reg.programName || task?.programName || 'مبادرة مدرسية',
+      'التصنيف (المجال)': domainMeta?.name || '-',
       'المهمة التطوعية': task?.title || 'مهمة تطوعية',
-      'المجال': task?.domain || '-',
-      'تاريخ النشاط': task?.date || '-',
+      'تاريخ النشاط': task?.date || parentProgram?.gregorianDate || '-',
       'الساعات المعتمدة': reg.hoursAwarded,
       'حالة الانضمام والاعتماد':
         reg.attendanceStatus === 'completed'
@@ -271,10 +287,13 @@ export function exportVolunteerReportExcel(
   const tasksData = tasks.map((t, index) => {
     const taskRegs = registrations.filter((r) => r.taskId === t.id);
     const completedRegs = taskRegs.filter((r) => r.attendanceStatus === 'completed');
+    const taskDomainId = resolveTaskDomainId(t, programs);
+    const taskDomainMeta = ACTIVITY_DOMAINS.find((d) => d.id === taskDomainId);
 
     return {
       'م': index + 1,
       'اسم المبادرة / البرنامج': t.programName,
+      'التصنيف (المجال)': taskDomainMeta?.name || '-',
       'عنوان المهمة التطوعية': t.title,
       'المرحلة المستهدفة':
         t.stage === 'all' ? 'جميع المراحل' : t.stage === 'primary' ? 'ابتدائي' : 'متوسط',
@@ -290,22 +309,46 @@ export function exportVolunteerReportExcel(
     };
   });
 
+  // 4. Sheet: 8 Domains Summary
+  const domainsData = ACTIVITY_DOMAINS.map((domain, index) => {
+    const domainPrograms = programs.filter((p) => resolveProgramDomainId(p) === domain.id);
+    const domainTasks = tasks.filter((t) => resolveTaskDomainId(t, programs) === domain.id);
+    const domainRegs = registrations.filter(
+      (r) =>
+        r.attendanceStatus === 'completed' &&
+        resolveRegistrationDomainId(r, tasks, programs) === domain.id
+    );
+    const hours = domainRegs.reduce((sum, r) => sum + r.hoursAwarded, 0);
+
+    return {
+      'م': index + 1,
+      'مجال النشاط (التصنيف)': domain.name,
+      'عدد المبادرات': domainPrograms.length,
+      'عدد المهام': domainTasks.length,
+      'عدد المشاركات المعتمدة': domainRegs.length,
+      'إجمالي الساعات المعتمدة': hours,
+    };
+  });
+
   const wb = XLSX.utils.book_new();
 
   // Create worksheets
   const wsRecords = XLSX.utils.json_to_sheet(recordsData);
   const wsStudents = XLSX.utils.json_to_sheet(studentsData);
   const wsTasks = XLSX.utils.json_to_sheet(tasksData);
+  const wsDomains = XLSX.utils.json_to_sheet(domainsData);
 
   // Set RTL direction
   wsRecords['!views'] = [{ rightToLeft: true }];
   wsStudents['!views'] = [{ rightToLeft: true }];
   wsTasks['!views'] = [{ rightToLeft: true }];
+  wsDomains['!views'] = [{ rightToLeft: true }];
 
   // Append sheets
   XLSX.utils.book_append_sheet(wb, wsRecords, 'سجل الساعات والحضور');
   XLSX.utils.book_append_sheet(wb, wsStudents, 'بيانات الطلاب والأوسمة');
   XLSX.utils.book_append_sheet(wb, wsTasks, 'المهام والمبادرات');
+  XLSX.utils.book_append_sheet(wb, wsDomains, 'إحصائية المجالات الثمانية');
 
   // Download file
   const dateStr = new Date().toISOString().split('T')[0];
@@ -364,36 +407,10 @@ function formatExcelDate(val: any): { gregorian: string; month: string } {
   return { gregorian: String(val).trim(), month: 'نوفمبر' };
 }
 
-// Map Arabic text to domain
+// Map Arabic text strictly to one of the 8 approved domains
 function matchActivityDomain(rawDomain: string): { domain: ActivityDomain; domainName: string } {
-  const text = (rawDomain || '').trim().toLowerCase();
-  
-  if (text.includes('كشف')) {
-    return { domain: 'scouts', domainName: 'النشاط الكشفي' };
-  }
-  if (text.includes('صح') || text.includes('رياض') || text.includes('بدن') || text.includes('دوري')) {
-    return { domain: 'health_sports', domainName: 'الصحة والرياضة' };
-  }
-  if (text.includes('علم') || text.includes('تقن') || text.includes('روبوت') || text.includes('ذكاء') || text.includes('حاسب')) {
-    return { domain: 'science_tech', domainName: 'العلوم والتقنية' };
-  }
-  if (text.includes('ثقاف') || text.includes('فن') || text.includes('قراء') || text.includes('إلقاء') || text.includes('مسرح')) {
-    return { domain: 'cultural_arts', domainName: 'الثقافة والفنون' };
-  }
-  if (text.includes('مواطن') || text.includes('حياة') || text.includes('تطوع') || text.includes('مجتمع')) {
-    return { domain: 'citizenship_life', domainName: 'المواطنة والحياة' };
-  }
-  if (text.includes('مناسب') || text.includes('عالم') || text.includes('وطن') || text.includes('يوم')) {
-    return { domain: 'national_world_days', domainName: 'المناسبات والأيام العالمية' };
-  }
-  if (text.includes('تعليم') || text.includes('مبادر') || text.includes('جود') || text.includes('فصل')) {
-    return { domain: 'educational_initiatives', domainName: 'المبادرات التعليمية' };
-  }
-  if (text.includes('جائز') || text.includes('مسابق') || text.includes('تحدي') || text.includes('أولمبياد')) {
-    return { domain: 'awards_competitions', domainName: 'الجوائز والمسابقات' };
-  }
-
-  return { domain: 'scouts', domainName: rawDomain.trim() || 'النشاط الكشفي' };
+  const meta = resolveActivityDomainMeta(undefined, rawDomain);
+  return { domain: meta.id, domainName: meta.name };
 }
 
 // Download Excel template for importing initiatives
@@ -469,6 +486,16 @@ export function downloadProgramTemplate() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'قالب استيراد المبادرات');
+
+  const domainsRef = ACTIVITY_DOMAINS.map((d, idx) => ({
+    'م': idx + 1,
+    'التصنيف المعتمد (مجال النشاط)': d.name,
+  }));
+  const wsDomainsRef = XLSX.utils.json_to_sheet(domainsRef);
+  wsDomainsRef['!cols'] = [{ wch: 6 }, { wch: 32 }];
+  wsDomainsRef['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsDomainsRef, 'المجالات الثمانية المعتمدة');
+
   XLSX.writeFile(wb, 'نموذج_استيراد_المبادرات_المدرسية.xlsx');
 }
 
@@ -520,6 +547,8 @@ export async function parseProgramsExcel(file: File): Promise<ProgramParseResult
           }
 
           const rawDomain = String(
+            row['تصنيف المبادرة'] ||
+            row['التصنيف'] ||
             row['مجال النشاط'] ||
             row['المجال'] ||
             row['المجال الإثرائي'] ||
@@ -676,3 +705,48 @@ export async function parseProgramsExcel(file: File): Promise<ProgramParseResult
     reader.readAsArrayBuffer(file);
   });
 }
+
+export interface NonParticipatingExportRow {
+  student: Student;
+  statusLabel: string;
+  registrationsCount: number;
+  suggestedInitiatives: string;
+}
+
+export function exportNonParticipatingStudentsExcel(rows: NonParticipatingExportRow[]) {
+  const data = rows.map((item, idx) => ({
+    'م': idx + 1,
+    'اسم الطالب': item.student.name,
+    'رقم الجوال': item.student.mobile,
+    'المرحلة': item.student.stage === 'primary' ? 'المرحلة الابتدائية' : 'المرحلة المتوسطة',
+    'الصف': item.student.grade,
+    'الفصل': item.student.classroom,
+    'حالة المشاركة': item.statusLabel,
+    'عدد التسجيلات غير المكتملة': item.registrationsCount,
+    'الساعات المعتمدة': item.student.totalHours,
+    'مبادرات مقترحة مناسبة لمرحلته': item.suggestedInitiatives,
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [
+    { wch: 6 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 10 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 42 },
+  ];
+  ws['!views'] = [{ rightToLeft: true }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'الطلاب غير المشاركين');
+  XLSX.writeFile(
+    wb,
+    `متابعة_الطلاب_غير_المشاركين_${new Date().toISOString().split('T')[0]}.xlsx`
+  );
+}
+

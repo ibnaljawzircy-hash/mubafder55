@@ -2,36 +2,159 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128;
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-+]+$');
+    }
+
+    function isValidStage(stage) {
+      return stage is string && stage in ['primary', 'intermediate', 'all'];
+    }
+
+    function isValidDomain(domain) {
+      return domain is string && domain in [
+        'cultural_arts',
+        'citizenship_life',
+        'health_sports',
+        'scouts',
+        'science_tech',
+        'national_world_days',
+        'educational_initiatives',
+        'awards_competitions'
+      ];
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'mobile', 'stage', 'grade', 'schoolName'])
+        && data.keys().hasOnly([
+          'id', 'name', 'mobile', 'stage', 'grade', 'classroom',
+          'schoolName', 'totalHours', 'completedTasksCount',
+          'registeredDate', 'badgeLevel'
+        ])
+        && isOptionalString(data, 'id', 128)
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.mobile is string && data.mobile.size() > 0 && data.mobile.size() <= 30
+        && isValidStage(data.stage)
+        && data.grade is string && data.grade.size() <= 100
+        && isOptionalString(data, 'classroom', 50)
+        && data.schoolName is string && data.schoolName.size() <= 200
+        && (!('totalHours' in data) || (data.totalHours is number && data.totalHours >= 0 && data.totalHours <= 10000))
+        && (!('completedTasksCount' in data) || (data.completedTasksCount is number && data.completedTasksCount >= 0 && data.completedTasksCount <= 10000))
+        && isOptionalString(data, 'registeredDate', 50)
+        && isOptionalString(data, 'badgeLevel', 100);
+    }
+
+    function isValidProgram(data) {
+      return data.keys().hasAll(['name', 'domain', 'stage', 'gregorianDate'])
+        && data.keys().hasOnly([
+          'id', 'name', 'domain', 'domainName', 'stage', 'stageLabel',
+          'month', 'gregorianDate', 'hijriDate', 'organizer', 'description', 'status'
+        ])
+        && isOptionalString(data, 'id', 128)
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 300
+        && isValidDomain(data.domain)
+        && isOptionalString(data, 'domainName', 100)
+        && isValidStage(data.stage)
+        && isOptionalString(data, 'stageLabel', 100)
+        && isOptionalString(data, 'month', 50)
+        && data.gregorianDate is string && data.gregorianDate.size() <= 50
+        && isOptionalString(data, 'hijriDate', 50)
+        && isOptionalString(data, 'organizer', 200)
+        && isOptionalString(data, 'description', 3000)
+        && (!('status' in data) || (data.status is string && data.status in ['ongoing', 'upcoming', 'completed']));
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'hours', 'stage', 'status'])
+        && data.keys().hasOnly([
+          'id', 'programId', 'programName', 'domain', 'title', 'description',
+          'requiredSkills', 'stage', 'hours', 'maxVolunteers', 'date',
+          'time', 'location', 'supervisorName', 'status', 'checkInCode'
+        ])
+        && isOptionalString(data, 'id', 128)
+        && isOptionalString(data, 'programId', 128)
+        && isOptionalString(data, 'programName', 300)
+        && isOptionalString(data, 'domain', 64)
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 250
+        && isOptionalString(data, 'description', 2000)
+        && (!('requiredSkills' in data) || (
+          data.requiredSkills is list
+          && data.requiredSkills.size() <= 20
+          && (data.requiredSkills.size() == 0 || (data.requiredSkills[0] is string && data.requiredSkills[0].size() <= 100))
+        ))
+        && isValidStage(data.stage)
+        && data.hours is number && data.hours >= 0 && data.hours <= 1000
+        && (!('maxVolunteers' in data) || (data.maxVolunteers is number && data.maxVolunteers >= 0 && data.maxVolunteers <= 10000))
+        && isOptionalString(data, 'date', 50)
+        && isOptionalString(data, 'time', 100)
+        && isOptionalString(data, 'location', 200)
+        && isOptionalString(data, 'supervisorName', 200)
+        && data.status is string && data.status in ['open', 'in_progress', 'completed', 'cancelled']
+        && isOptionalString(data, 'checkInCode', 50);
+    }
+
+    function isValidRegistration(data) {
+      return data.keys().hasAll(['taskId', 'studentId', 'studentName', 'registeredAt', 'attendanceStatus'])
+        && data.keys().hasOnly([
+          'id', 'taskId', 'programId', 'programName', 'studentId', 'studentName',
+          'studentMobile', 'studentStage', 'registeredAt', 'attendanceStatus',
+          'approvalStatus', 'hoursAwarded', 'notes', 'confirmedAt', 'confirmedBy', 'rating'
+        ])
+        && isOptionalString(data, 'id', 128)
+        && data.taskId is string && data.taskId.size() > 0 && data.taskId.size() <= 128
+        && isOptionalString(data, 'programId', 128)
+        && isOptionalString(data, 'programName', 300)
+        && data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128
+        && data.studentName is string && data.studentName.size() > 0 && data.studentName.size() <= 200
+        && isOptionalString(data, 'studentMobile', 30)
+        && (!('studentStage' in data) || isValidStage(data.studentStage))
+        && data.registeredAt is string && data.registeredAt.size() <= 64
+        && data.attendanceStatus is string && data.attendanceStatus in ['registered', 'attended', 'absent', 'completed']
+        && (!('approvalStatus' in data) || (data.approvalStatus is string && data.approvalStatus in ['pending', 'approved', 'rejected']))
+        && (!('hoursAwarded' in data) || (data.hoursAwarded is number && data.hoursAwarded >= 0 && data.hoursAwarded <= 1000))
+        && isOptionalString(data, 'notes', 1000)
+        && isOptionalString(data, 'confirmedAt', 64)
+        && isOptionalString(data, 'confirmedBy', 200)
+        && (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5));
     }
 
     match /students/{studentId} {
-      allow read: if true;
-      allow create, update: if isValidId(studentId);
+      allow list: if true;
+      allow get: if isValidId(studentId);
+      allow create, update: if isValidId(studentId) && isValidStudent(incoming());
       allow delete: if isValidId(studentId);
     }
 
     match /programs/{programId} {
-      allow read: if true;
-      allow create, update: if isValidId(programId);
+      allow list: if true;
+      allow get: if isValidId(programId);
+      allow create, update: if isValidId(programId) && isValidProgram(incoming());
       allow delete: if isValidId(programId);
     }
 
     match /tasks/{taskId} {
-      allow read: if true;
-      allow create, update: if isValidId(taskId);
+      allow list: if true;
+      allow get: if isValidId(taskId);
+      allow create, update: if isValidId(taskId) && isValidTask(incoming());
       allow delete: if isValidId(taskId);
     }
 
     match /registrations/{registrationId} {
-      allow read: if true;
-      allow create, update: if isValidId(registrationId);
+      allow list: if true;
+      allow get: if isValidId(registrationId);
+      allow create, update: if isValidId(registrationId) && isValidRegistration(incoming());
       allow delete: if isValidId(registrationId);
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

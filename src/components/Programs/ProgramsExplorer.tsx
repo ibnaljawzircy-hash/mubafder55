@@ -5,7 +5,9 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Clock,
   Edit3,
   GraduationCap,
@@ -13,19 +15,20 @@ import {
   MapPin,
   Lock,
   Plus,
-  Percent,
   FileSpreadsheet,
   Share2,
   Sliders,
-  Sparkles,
-  Star,
+  Tag,
   Trash2,
-  TrendingUp,
   UserPlus,
-  Users,
 } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
-import { getProgramStatus, sortProgramsChronologically, parseProgramDate } from '../../utils/programHelpers';
+import {
+  getProgramStatus,
+  resolveActivityDomainMeta,
+  resolveProgramDomainId,
+  sortProgramsChronologically,
+} from '../../utils/programHelpers';
 import { AddProgramModal } from './AddProgramModal';
 import { AddTaskModal } from './AddTaskModal';
 import { EditProgramModal } from './EditProgramModal';
@@ -104,21 +107,185 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
   // Status filter state: 'all' | 'ongoing' | 'upcoming' | 'completed'
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'upcoming' | 'completed'>('all');
 
-  // Chronologically sorted programs (التسلسل التاريخي)
+  // Chronologically sorted programs (التسلسل التاريخي: الأقدم ← الحالي ← القادم)
   const chronologicalPrograms = React.useMemo(() => {
     return sortProgramsChronologically(programs);
   }, [programs]);
 
-  // Currently active initiatives for direct spotlight (الرؤية المباشرة للمبادرة الجاري تنفيذها)
-  const ongoingPrograms = React.useMemo(() => {
-    return chronologicalPrograms.filter((p) => getProgramStatus(p) === 'ongoing');
-  }, [chronologicalPrograms]);
-
-  // Filtered initiatives according to user's selected tab
+  // Filtered initiatives according to user's selected status tab
   const filteredPrograms = React.useMemo(() => {
     if (statusFilter === 'all') return chronologicalPrograms;
     return chronologicalPrograms.filter((p) => getProgramStatus(p) === statusFilter);
   }, [chronologicalPrograms, statusFilter]);
+
+  const getDefaultWheelIndex = React.useCallback((list: ActivityProgram[]): number => {
+    if (list.length === 0) return 0;
+    const ongoingIdx = list.findIndex((p) => getProgramStatus(p) === 'ongoing');
+    if (ongoingIdx !== -1) return ongoingIdx;
+    const upcomingIdx = list.findIndex((p) => getProgramStatus(p) === 'upcoming');
+    if (upcomingIdx !== -1) return upcomingIdx;
+    return Math.max(0, list.length - 1);
+  }, []);
+
+  const [activeWheelIndex, setActiveWheelIndex] = useState<number>(() =>
+    getDefaultWheelIndex(filteredPrograms)
+  );
+  const [dragOffsetY, setDragOffsetY] = useState<number>(0);
+  const [isWheelDragging, setIsWheelDragging] = useState<boolean>(false);
+
+  const wheelContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const hasUserSpunRef = React.useRef<boolean>(false);
+  const prevStatusFilterRef = React.useRef(statusFilter);
+  const wheelCooldownRef = React.useRef<number>(0);
+  const wheelAccumRef = React.useRef<number>(0);
+  const suppressCardClickRef = React.useRef<boolean>(false);
+  const pointerDragRef = React.useRef<{
+    startY: number;
+    lastDy: number;
+    moved: boolean;
+    pointerId: number;
+  } | null>(null);
+
+  const clampedWheelIndex =
+    filteredPrograms.length > 0
+      ? Math.min(Math.max(activeWheelIndex, 0), filteredPrograms.length - 1)
+      : 0;
+
+  React.useEffect(() => {
+    const filterChanged = prevStatusFilterRef.current !== statusFilter;
+    prevStatusFilterRef.current = statusFilter;
+
+    if (filterChanged) {
+      hasUserSpunRef.current = false;
+      setActiveWheelIndex(getDefaultWheelIndex(filteredPrograms));
+      return;
+    }
+
+    if (!hasUserSpunRef.current && filteredPrograms.length > 0) {
+      setActiveWheelIndex(getDefaultWheelIndex(filteredPrograms));
+      return;
+    }
+
+    if (filteredPrograms.length > 0 && activeWheelIndex >= filteredPrograms.length) {
+      setActiveWheelIndex(filteredPrograms.length - 1);
+    }
+  }, [statusFilter, filteredPrograms, activeWheelIndex, getDefaultWheelIndex]);
+
+  const stepWheel = React.useCallback(
+    (delta: number) => {
+      if (filteredPrograms.length <= 1) return;
+      hasUserSpunRef.current = true;
+      setActiveWheelIndex((prev) =>
+        Math.min(filteredPrograms.length - 1, Math.max(0, prev + delta))
+      );
+    },
+    [filteredPrograms.length]
+  );
+
+  // Non-passive touch & wheel gestures for smooth drum rotation:
+  // Swipe/scroll UP -> upcoming (+1), swipe/scroll DOWN -> older/completed (-1)
+  React.useEffect(() => {
+    const el = wheelContainerRef.current;
+    if (!el || filteredPrograms.length <= 1) return;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchDy = 0;
+    let touchMode: 'pending' | 'wheel' | 'scroll' = 'pending';
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchDy = 0;
+      touchMode = 'pending';
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - touchStartX;
+      const dy = e.touches[0].clientY - touchStartY;
+
+      if (touchMode === 'pending') {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          touchMode = 'scroll';
+          return;
+        }
+        const canGoNext = dy < 0 && clampedWheelIndex < filteredPrograms.length - 1;
+        const canGoPrev = dy > 0 && clampedWheelIndex > 0;
+        if (canGoNext || canGoPrev) {
+          touchMode = 'wheel';
+          setIsWheelDragging(true);
+        } else {
+          touchMode = 'scroll';
+          return;
+        }
+      }
+
+      if (touchMode === 'wheel') {
+        e.preventDefault();
+        touchDy = dy;
+        const clampedDrag = Math.max(-84, Math.min(84, dy * 0.6));
+        setDragOffsetY(clampedDrag);
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (touchMode === 'wheel') {
+        if (Math.abs(touchDy) >= 32) {
+          suppressCardClickRef.current = true;
+          window.setTimeout(() => {
+            suppressCardClickRef.current = false;
+          }, 120);
+          stepWheel(touchDy < 0 ? 1 : -1);
+        }
+        setDragOffsetY(0);
+        setIsWheelDragging(false);
+      }
+      touchMode = 'pending';
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      if (e.deltaY === 0) return;
+
+      const wantsNext = e.deltaY > 0;
+      const canStep = wantsNext
+        ? clampedWheelIndex < filteredPrograms.length - 1
+        : clampedWheelIndex > 0;
+
+      if (!canStep) return;
+
+      e.preventDefault();
+      const now = Date.now();
+      if (now - wheelCooldownRef.current < 260) {
+        wheelAccumRef.current = 0;
+        return;
+      }
+
+      wheelAccumRef.current += e.deltaY;
+      if (Math.abs(wheelAccumRef.current) >= 24) {
+        stepWheel(wheelAccumRef.current > 0 ? 1 : -1);
+        wheelCooldownRef.current = now;
+        wheelAccumRef.current = 0;
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [clampedWheelIndex, filteredPrograms.length, stepWheel]);
 
   const ongoingCount = React.useMemo(() => {
     return chronologicalPrograms.filter((p) => getProgramStatus(p) === 'ongoing').length;
@@ -131,50 +298,6 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
   const completedCount = React.useMemo(() => {
     return chronologicalPrograms.filter((p) => getProgramStatus(p) === 'completed').length;
   }, [chronologicalPrograms]);
-
-  // Top 5 Focus Strategic Metrics
-  const totalCertifiedHours = React.useMemo(() => {
-    return registrations
-      .filter((r) => r.attendanceStatus === 'completed')
-      .reduce((sum, r) => sum + r.hoursAwarded, 0);
-  }, [registrations]);
-
-  const activeVolunteersCount = React.useMemo(() => {
-    return new Set(
-      registrations
-        .filter((r) => r.attendanceStatus === 'completed' || r.attendanceStatus === 'attended')
-        .map((r) => r.studentId)
-    ).size;
-  }, [registrations]);
-
-  const volunteerRatioPercent =
-    students.length > 0 ? Math.round((activeVolunteersCount / students.length) * 100) : 0;
-
-  const executedInitiativesCount = React.useMemo(() => {
-    return programs.filter((p) =>
-      registrations.some(
-        (r) =>
-          r.attendanceStatus === 'completed' &&
-          (r.programId === p.id || tasks.some((t) => t.id === r.taskId && t.programId === p.id))
-      )
-    ).length;
-  }, [programs, registrations, tasks]);
-
-  const attendanceCommitmentRate = React.useMemo(() => {
-    const attended = registrations.filter(
-      (r) => r.attendanceStatus === 'completed' || r.attendanceStatus === 'attended'
-    ).length;
-    const absent = registrations.filter((r) => r.attendanceStatus === 'absent').length;
-    const evaluated = attended + absent;
-    return evaluated > 0 ? Math.round((attended / evaluated) * 100) : 100;
-  }, [registrations]);
-
-  const averageSatisfaction = React.useMemo(() => {
-    const rated = registrations.filter((r) => typeof r.rating === 'number' && r.rating > 0);
-    return rated.length > 0
-      ? (rated.reduce((sum, r) => sum + (r.rating || 5), 0) / rated.length).toFixed(1)
-      : '5.0';
-  }, [registrations]);
 
   const handleSelectProgram = (id: string | null) => {
     setSelectedProgramId(id);
@@ -227,7 +350,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
         id: `task-prog-${progToJoin.id}`,
         programId: progToJoin.id,
         programName: progToJoin.name,
-        domain: progToJoin.domain,
+        domain: resolveProgramDomainId(progToJoin),
         title: `المشاركة والتطوع في ${progToJoin.name}`,
         description: progToJoin.description,
         stage: progToJoin.stage,
@@ -334,121 +457,18 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             )}
           </div>
 
-          {/* ⭐️ أهم 5 أرقام للعمل التطوعي المدرسي (Executive Metric Banner) */}
-          <div className="bg-[#ffffff] rounded-3xl p-4 sm:p-5 border border-black/[0.04] shadow-[0_2px_12px_rgba(0,0,0,0.03)] space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#0071e3]" />
-                <h2 className="text-[13px] sm:text-[14px] font-semibold text-[#1d1d1f]">
-                  مؤشرات الأداء الاستراتيجية الخمسة
-                </h2>
-              </div>
-              <span className="text-[11px] text-[#86868b]">
-                تحديث فوري ومباشر لجميع المبادرات
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {/* 1. إجمالي الساعات التطوعية المعتمدة (الرقم الأهم) */}
-              <div className="p-3.5 bg-gradient-to-br from-emerald-50/80 via-emerald-50/30 to-white rounded-2xl border border-emerald-200/80 shadow-2xs relative overflow-hidden">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full inline-block">
-                    الرقم الأهم للتقارير
-                  </span>
-                  <Award className="w-3.5 h-3.5 text-emerald-600" />
-                </div>
-                <span className="text-[11px] text-[#86868b] block font-medium">إجمالي الساعات المعتمدة</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-emerald-950 font-mono tracking-tight tabular-nums">
-                    {totalCertifiedHours}
-                  </span>
-                  <span className="text-[11px] font-medium text-emerald-700">ساعة</span>
-                </div>
-              </div>
-
-              {/* 2. نسبة الطلاب المتطوعين */}
-              <div className="p-3.5 bg-[#f5f5f7]/80 hover:bg-[#f5f5f7] rounded-2xl border border-black/[0.04] transition-colors">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-medium text-sky-800 bg-sky-50 px-2 py-0.5 rounded-full inline-block">
-                    المشاركة الطلابية
-                  </span>
-                  <Users className="w-3.5 h-3.5 text-sky-600" />
-                </div>
-                <span className="text-[11px] text-[#86868b] block font-medium">نسبة الطلاب المتطوعين</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-[#1d1d1f] font-mono tracking-tight tabular-nums">
-                    {volunteerRatioPercent}%
-                  </span>
-                  <span className="text-[10px] text-[#86868b]">({activeVolunteersCount} من {students.length})</span>
-                </div>
-              </div>
-
-              {/* 3. عدد المبادرات المنفذة */}
-              <div className="p-3.5 bg-[#f5f5f7]/80 hover:bg-[#f5f5f7] rounded-2xl border border-black/[0.04] transition-colors">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-medium text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded-full inline-block">
-                    الفرص المنفذة
-                  </span>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
-                </div>
-                <span className="text-[11px] text-[#86868b] block font-medium">المبادرات المنفذة</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-[#1d1d1f] font-mono tracking-tight tabular-nums">
-                    {executedInitiativesCount}
-                  </span>
-                  <span className="text-[11px] text-[#86868b]">مبادرة مكتملة</span>
-                </div>
-              </div>
-
-              {/* 4. نسبة الالتزام بالحضور */}
-              <div className="p-3.5 bg-[#f5f5f7]/80 hover:bg-[#f5f5f7] rounded-2xl border border-black/[0.04] transition-colors">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-medium text-purple-800 bg-purple-50 px-2 py-0.5 rounded-full inline-block">
-                    الانضباط والالتزام
-                  </span>
-                  <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
-                </div>
-                <span className="text-[11px] text-[#86868b] block font-medium">نسبة الالتزام بالحضور</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-[#0071e3] font-mono tracking-tight tabular-nums">
-                    {attendanceCommitmentRate}%
-                  </span>
-                  <span className="text-[10px] text-[#86868b]">حضور فعلي</span>
-                </div>
-              </div>
-
-              {/* 5. معدل رضا الطلاب */}
-              <div className="p-3.5 bg-gradient-to-br from-amber-50/70 via-amber-50/20 to-white rounded-2xl border border-amber-200/80 shadow-2xs col-span-2 md:col-span-1">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full inline-block">
-                    الأثر والرضا
-                  </span>
-                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                </div>
-                <span className="text-[11px] text-[#86868b] block font-medium">معدل رضا الطلاب</span>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-amber-950 font-mono tracking-tight tabular-nums">
-                    {averageSatisfaction}
-                  </span>
-                  <span className="text-amber-500 text-xs">★</span>
-                  <span className="text-[10px] text-amber-800 font-mono font-medium">/ 5</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Timeline & Status Filter Tabs */}
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-b border-black/[0.04] pb-3">
+          {/* Timeline & Status Filter Tabs - Single Row */}
+          <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 pt-1 border-b border-black/[0.04] pb-3 overflow-x-auto">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 ${
                 statusFilter === 'all'
                   ? 'bg-[#1d1d1f] text-white shadow-xs'
                   : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
               }`}
             >
-              <span>جميع المبادرات (تسلسل زمني)</span>
-              <span className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+              <span>جميع المبادرات</span>
+              <span className={`text-[10px] sm:text-[11px] font-mono tabular-nums px-1.5 py-0.2 rounded-full ${
                 statusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-black/5 text-[#86868b]'
               }`}>
                 {chronologicalPrograms.length}
@@ -457,15 +477,14 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
             <button
               onClick={() => setStatusFilter('ongoing')}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 ${
                 statusFilter === 'ongoing'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>جاري تنفيذها</span>
-              <span className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+              <span className={`text-[10px] sm:text-[11px] font-mono tabular-nums px-1.5 py-0.2 rounded-full ${
                 statusFilter === 'ongoing' ? 'bg-white/25 text-white' : 'bg-emerald-200/60 text-emerald-900'
               }`}>
                 {ongoingCount}
@@ -474,15 +493,14 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
             <button
               onClick={() => setStatusFilter('upcoming')}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 ${
                 statusFilter === 'upcoming'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
               }`}
             >
-              <Sliders className="w-3 h-3 text-amber-600" />
-              <span>قادمة · قيد الإعداد</span>
-              <span className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+              <span>مبادرات قادمة</span>
+              <span className={`text-[10px] sm:text-[11px] font-mono tabular-nums px-1.5 py-0.2 rounded-full ${
                 statusFilter === 'upcoming' ? 'bg-white/25 text-white' : 'bg-amber-200/60 text-amber-900'
               }`}>
                 {upcomingCount}
@@ -491,15 +509,14 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
             <button
               onClick={() => setStatusFilter('completed')}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 ${
                 statusFilter === 'completed'
                   ? 'bg-stone-700 text-white shadow-xs'
                   : 'bg-stone-100 text-stone-700 hover:bg-stone-200 border border-stone-200/80'
               }`}
             >
-              <Lock className="w-3 h-3 text-stone-500" />
-              <span>المنتهية والمقفلة</span>
-              <span className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full ${
+              <span>مبادرات منتهية</span>
+              <span className={`text-[10px] sm:text-[11px] font-mono tabular-nums px-1.5 py-0.2 rounded-full ${
                 statusFilter === 'completed' ? 'bg-white/25 text-white' : 'bg-stone-200 text-stone-800'
               }`}>
                 {completedCount}
@@ -507,260 +524,397 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             </button>
           </div>
 
-          {/* 🌟 الرؤية المباشرة: المبادرة الجاري تنفيذها حالياً (Direct Spotlight View) */}
-          {ongoingPrograms.length > 0 && (statusFilter === 'all' || statusFilter === 'ongoing') && (
-            <div className="space-y-3 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                  </span>
-                  <span className="text-[13px] font-bold text-emerald-900 tracking-wide">
-                    الرؤية المباشرة · المبادرة الجاري تنفيذها حالياً
-                  </span>
-                </div>
-                <span className="text-[11px] text-emerald-700 font-medium bg-emerald-100/70 px-2.5 py-0.5 rounded-full">
-                  فرصة تطوعية متاحة للتسجيل الفوري
-                </span>
-              </div>
+          {/* Vertical Initiatives Wheel (عجلة المبادرات: السحب للأعلى ← القادمة، السحب للأسفل ← القديمة، وفي المنتصف الحالية) */}
+          {filteredPrograms.length > 0 ? (
+            <div
+              ref={wheelContainerRef}
+              tabIndex={0}
+              aria-label="عجلة المبادرات"
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  stepWheel(1);
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  stepWheel(-1);
+                }
+              }}
+              onPointerDown={(e) => {
+                if (e.pointerType !== 'mouse' || e.button !== 0) return;
+                if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+                if (filteredPrograms.length <= 1) return;
+                pointerDragRef.current = {
+                  startY: e.clientY,
+                  lastDy: 0,
+                  moved: false,
+                  pointerId: e.pointerId,
+                };
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // Ignore capture errors on synthetic events
+                }
+              }}
+              onPointerMove={(e) => {
+                const drag = pointerDragRef.current;
+                if (!drag || e.pointerId !== drag.pointerId) return;
+                const dy = e.clientY - drag.startY;
+                drag.lastDy = dy;
+                if (!drag.moved && Math.abs(dy) >= 8) {
+                  drag.moved = true;
+                  setIsWheelDragging(true);
+                }
+                if (drag.moved) {
+                  setDragOffsetY(Math.max(-84, Math.min(84, dy * 0.6)));
+                }
+              }}
+              onPointerUp={(e) => {
+                const drag = pointerDragRef.current;
+                if (!drag || e.pointerId !== drag.pointerId) return;
+                pointerDragRef.current = null;
+                try {
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                } catch {
+                  // Ignore release errors
+                }
+                if (drag.moved) {
+                  if (Math.abs(drag.lastDy) >= 32) {
+                    suppressCardClickRef.current = true;
+                    window.setTimeout(() => {
+                      suppressCardClickRef.current = false;
+                    }, 120);
+                    stepWheel(drag.lastDy < 0 ? 1 : -1);
+                  }
+                }
+                setDragOffsetY(0);
+                setIsWheelDragging(false);
+              }}
+              onPointerCancel={() => {
+                pointerDragRef.current = null;
+                setDragOffsetY(0);
+                setIsWheelDragging(false);
+              }}
+              className={`relative w-full overflow-hidden select-none outline-none touch-pan-y ${
+                filteredPrograms.length === 1
+                  ? 'h-[290px] sm:h-[310px]'
+                  : 'h-[540px] sm:h-[580px]'
+              } ${isWheelDragging ? 'cursor-grabbing' : filteredPrograms.length > 1 ? 'cursor-grab' : ''}`}
+            >
+              {/* Soft edge fade masks to blend wheel slots cleanly into #f5f5f7 */}
+              {filteredPrograms.length > 1 && (
+                <>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-10 sm:h-12 bg-gradient-to-b from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-10 sm:h-12 bg-gradient-to-t from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
+                  />
+                </>
+              )}
 
-              <div className="space-y-3">
-                {ongoingPrograms.map((ongoingProg) => {
-                  const progTasks = tasks.filter((t) => t.programId === ongoingProg.id);
+              {/* Subtle desktop/accessibility step arrows on left edge */}
+              {filteredPrograms.length > 1 && (
+                <div className="hidden sm:flex flex-col items-center gap-2 absolute left-3 top-1/2 -translate-y-1/2 z-40">
+                  <button
+                    type="button"
+                    aria-label="المبادرة السابقة"
+                    disabled={clampedWheelIndex === 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      stepWheel(-1);
+                    }}
+                    className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center border transition-all duration-150 ${
+                      clampedWheelIndex === 0
+                        ? 'bg-white/50 text-[#c7c7cc] border-black/[0.04] cursor-default opacity-45'
+                        : 'bg-white/95 hover:bg-white text-[#1d1d1f] border-black/[0.08] shadow-sm cursor-pointer active:scale-95'
+                    }`}
+                  >
+                    <ChevronUp className="w-5 h-5" />
+                  </button>
+                  <span className="text-[11px] font-mono tabular-nums text-[#86868b] bg-white/90 px-2 py-0.5 rounded-full border border-black/[0.05]">
+                    {clampedWheelIndex + 1}/{filteredPrograms.length}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="المبادرة القادمة"
+                    disabled={clampedWheelIndex >= filteredPrograms.length - 1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      stepWheel(1);
+                    }}
+                    className={`min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center border transition-all duration-150 ${
+                      clampedWheelIndex >= filteredPrograms.length - 1
+                        ? 'bg-white/50 text-[#c7c7cc] border-black/[0.04] cursor-default opacity-45'
+                        : 'bg-white/95 hover:bg-white text-[#1d1d1f] border-black/[0.08] shadow-sm cursor-pointer active:scale-95'
+                    }`}
+                  >
+                    <ChevronDown className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              <div className="relative w-full max-w-3xl mx-auto h-full px-1 sm:px-14">
+                {filteredPrograms.map((prog, idx) => {
+                  const offset = idx - clampedWheelIndex;
+                  if (Math.abs(offset) > 2) return null;
+
+                  const progTasks = tasks.filter((t) => t.programId === prog.id);
                   const hours = progTasks.length > 0 ? Math.max(...progTasks.map((t) => t.hours)) : 2;
+                  const progStatus = getProgramStatus(prog);
+                  const isCompleted = progStatus === 'completed';
+                  const isOngoing = progStatus === 'ongoing';
+                  const isCenter = offset === 0;
+                  const domainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
+
+                  let baseTranslateY = 0;
+                  let scale = 1;
+                  let opacity = 1;
+                  let zIndex = 30;
+
+                  if (offset === -2) {
+                    baseTranslateY = -270;
+                    scale = 0.82;
+                    opacity = 0;
+                    zIndex = 10;
+                  } else if (offset === -1) {
+                    baseTranslateY = -148;
+                    scale = 0.91;
+                    opacity = isCompleted ? 0.62 : 0.78;
+                    zIndex = 20;
+                  } else if (offset === 0) {
+                    baseTranslateY = 0;
+                    scale = 1;
+                    opacity = 1;
+                    zIndex = 30;
+                  } else if (offset === 1) {
+                    baseTranslateY = 206;
+                    scale = 0.91;
+                    opacity = isCompleted ? 0.62 : 0.78;
+                    zIndex = 20;
+                  } else if (offset === 2) {
+                    baseTranslateY = 330;
+                    scale = 0.82;
+                    opacity = 0;
+                    zIndex = 10;
+                  }
+
+                  const liveShift = Math.abs(offset) <= 1 ? dragOffsetY * (isCenter ? 0.85 : 0.45) : 0;
 
                   return (
                     <div
-                      key={`spotlight-${ongoingProg.id}`}
-                      className="relative overflow-hidden bg-gradient-to-br from-white via-emerald-50/25 to-emerald-100/40 rounded-3xl p-6 sm:p-7 border-2 border-emerald-400 shadow-[0_12px_36px_rgba(16,185,129,0.14)] flex flex-col lg:flex-row lg:items-center justify-between gap-5 transition-all"
+                      key={prog.id}
+                      onClick={() => {
+                        if (suppressCardClickRef.current) return;
+                        if (isCenter) {
+                          handleSelectProgram(prog.id);
+                        } else {
+                          hasUserSpunRef.current = true;
+                          setActiveWheelIndex(idx);
+                        }
+                      }}
+                      style={{
+                        transform: `translate3d(0, calc(-50% + ${baseTranslateY + liveShift}px), 0) scale(${scale})`,
+                        opacity,
+                        zIndex,
+                        transition: isWheelDragging
+                          ? 'none'
+                          : 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+                        pointerEvents: Math.abs(offset) > 1 ? 'none' : 'auto',
+                      }}
+                      className={`absolute inset-x-1 sm:inset-x-14 top-1/2 h-[246px] sm:h-[264px] rounded-3xl p-4 sm:p-6 flex flex-col justify-between cursor-pointer group ${
+                        isCenter
+                          ? isOngoing
+                            ? 'bg-gradient-to-br from-white via-emerald-50/30 to-emerald-100/35 border-2 border-emerald-400 shadow-[0_14px_38px_rgba(16,185,129,0.16)]'
+                            : isCompleted
+                            ? 'bg-[#fafafa] border border-stone-300 shadow-[0_12px_32px_rgba(0,0,0,0.06)]'
+                            : 'bg-[#ffffff] border border-black/[0.08] shadow-[0_14px_38px_rgba(0,0,0,0.08)]'
+                          : isCompleted
+                          ? 'bg-[#f8f8fa] border border-stone-200/80 shadow-xs'
+                          : isOngoing
+                          ? 'bg-[#ffffff] border border-emerald-300/80 shadow-sm'
+                          : 'bg-[#ffffff] border border-black/[0.06] shadow-sm'
+                      }`}
                     >
-                      <div className="space-y-2.5 max-w-2xl">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-xs">
-                            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                            جاري تنفيذها الآن
-                          </span>
-                          <span className="text-[12px] font-medium text-emerald-900 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
-                            {ongoingProg.stageLabel} · {ongoingProg.domainName}
-                          </span>
-                          <span className="text-[12px] font-semibold text-[#0071e3] bg-white px-2.5 py-0.5 rounded-full font-mono border border-black/[0.04]">
-                            {hours} ساعات معتمدة
-                          </span>
+                      <div className="space-y-2 sm:space-y-2.5 min-w-0">
+                        {/* Metadata row */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-[12px]">
+                          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1 font-semibold px-2.5 py-0.5 rounded-full border shrink-0 ${domainMeta.bgColor} ${domainMeta.badgeColor}`}
+                            >
+                              <Tag className="w-3 h-3 shrink-0" />
+                              <span>{domainMeta.name}</span>
+                            </span>
+
+                            <span className="text-[#0071e3] font-medium bg-[#f5f5f7] px-2.5 py-0.5 rounded-full shrink-0">
+                              {prog.stageLabel}
+                            </span>
+
+                            <span className="text-[#86868b] font-mono tabular-nums shrink-0">
+                              {hours} ساعات
+                            </span>
+                          </div>
+
+                          {isOngoing && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                              جاري تنفيذها الآن
+                            </span>
+                          )}
+                          {progStatus === 'upcoming' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/70 shrink-0">
+                              قادمة
+                            </span>
+                          )}
+                          {isCompleted && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-600 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200 shrink-0">
+                              <Lock className="w-3 h-3 text-stone-500" />
+                              <span>منتهية</span>
+                            </span>
+                          )}
                         </div>
 
-                        <h2
-                          onClick={() => handleSelectProgram(ongoingProg.id)}
-                          className="text-xl sm:text-2xl font-bold text-[#1d1d1f] hover:text-emerald-700 transition-colors cursor-pointer tracking-tight"
+                        {/* Title */}
+                        <h3
+                          className={`text-[17px] sm:text-[21px] font-bold tracking-tight leading-snug line-clamp-2 transition-colors ${
+                            isOngoing
+                              ? 'text-emerald-950 group-hover:text-emerald-700'
+                              : isCompleted
+                              ? 'text-stone-700'
+                              : 'text-[#1d1d1f] group-hover:text-[#0071e3]'
+                          }`}
                         >
-                          {ongoingProg.name}
-                        </h2>
+                          {prog.name}
+                        </h3>
 
-                        <p className="text-[13px] sm:text-[14px] text-[#48484a] leading-relaxed line-clamp-2">
-                          {ongoingProg.description}
+                        {/* Brief Description */}
+                        <p className="text-[12.5px] sm:text-[13.5px] text-[#6e6e73] leading-relaxed line-clamp-2">
+                          {prog.description}
                         </p>
-
-                        <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#86868b] pt-0.5">
-                          <span>التاريخ: <strong className="text-[#1d1d1f] font-mono">{ongoingProg.gregorianDate} ({ongoingProg.month})</strong></span>
-                          <span>·</span>
-                          <span>الجهة: <strong className="text-[#1d1d1f]">{ongoingProg.organizer}</strong></span>
-                        </div>
                       </div>
 
-                      <div className="shrink-0 flex flex-wrap sm:flex-nowrap items-center gap-2">
-                        <button
-                          onClick={() => setProgramForWhatsApp(ongoingProg)}
-                          className="px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 text-[12px] font-medium rounded-full transition-all flex items-center justify-center gap-1.5 border border-emerald-300 shadow-xs cursor-pointer"
-                          title="إرسال المبادرة للطلاب عبر واتساب"
-                        >
-                          <Share2 className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>إرسال واتساب</span>
-                        </button>
+                      <div className="space-y-2.5">
+                        {/* Date & Organizer */}
+                        <div className="flex items-center gap-2 text-[11.5px] sm:text-[12px] text-[#86868b] truncate">
+                          <Calendar className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
+                          <span className="font-mono text-[#1d1d1f] tabular-nums shrink-0">
+                            {prog.gregorianDate} ({prog.month})
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">{prog.organizer}</span>
+                        </div>
 
-                        <button
-                          onClick={() => handleJoinInitiative(ongoingProg)}
-                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-semibold rounded-full transition-all flex items-center justify-center gap-1.5 shadow-[0_4px_14px_rgba(16,185,129,0.3)] cursor-pointer"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                          <span>انضمام فوري</span>
-                        </button>
+                        {/* Actions row (only interactive when centered) */}
+                        <div className="pt-2.5 border-t border-black/[0.05] flex items-center justify-between gap-1.5 sm:gap-2">
+                          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              tabIndex={isCenter ? 0 : -1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!isCenter) return;
+                                setProgramForWhatsApp(prog);
+                              }}
+                              className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-emerald-200/60 shrink-0 whitespace-nowrap"
+                              title="إرسال المبادرة للطلاب عبر واتساب"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="sm:hidden">واتساب</span>
+                              <span className="hidden sm:inline">إرسال واتساب</span>
+                            </button>
 
-                        <button
-                          onClick={() => handleSelectProgram(ongoingProg.id)}
-                          className="px-4 py-2.5 bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-medium rounded-full transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>عرض المهام</span>
-                          <ChevronLeft className="w-4 h-4 text-[#86868b]" />
-                        </button>
+                            {isEffectiveSupervisor && (
+                              <>
+                                <button
+                                  type="button"
+                                  tabIndex={isCenter ? 0 : -1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!isCenter) return;
+                                    setProgramToEdit(prog);
+                                  }}
+                                  className="p-1.5 sm:p-2 text-[#86868b] hover:text-[#0071e3] bg-[#f5f5f7] hover:bg-[#e8e8ed] rounded-full transition-colors cursor-pointer border border-black/[0.04] shrink-0"
+                                  title="تعديل بيانات وتصنيف المبادرة"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
 
-                        {isEffectiveSupervisor && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProgramToDelete(ongoingProg);
-                            }}
-                            className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[12px] font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 border border-rose-200/80 cursor-pointer"
-                            title="حذف هذه المبادرة"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>حذف المبادرة</span>
-                          </button>
-                        )}
+                                <button
+                                  type="button"
+                                  tabIndex={isCenter ? 0 : -1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!isCenter) return;
+                                    setProgramToDelete(prog);
+                                  }}
+                                  className="px-2 sm:px-2.5 py-1.5 text-[11px] sm:text-[12px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-rose-200/80 shrink-0 whitespace-nowrap"
+                                  title="حذف المبادرة"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                  <span>حذف</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            {isOngoing && (
+                              <button
+                                type="button"
+                                tabIndex={isCenter ? 0 : -1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isCenter) return;
+                                  handleJoinInitiative(prog);
+                                }}
+                                className="px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-[12px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-colors flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap"
+                              >
+                                <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                                <span className="sm:hidden">انضمام</span>
+                                <span className="hidden sm:inline">انضمام فوري</span>
+                              </button>
+                            )}
+
+                            <span className="text-[11.5px] sm:text-[13px] font-medium text-[#0071e3] group-hover:underline flex items-center gap-0.5 whitespace-nowrap">
+                              <span className="sm:hidden">التفاصيل</span>
+                              <span className="hidden sm:inline">عرض التفاصيل</span>
+                              <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
             </div>
-          )}
-
-          {/* INITIATIVES LIST (التسلسل التاريخي): اسم المبادرة - وتحتها تعريف بسيط - وتحتها التاريخ - ونوع المرحلة */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-[13px] font-semibold text-[#86868b]">
-                {statusFilter === 'all' && 'قائمة المبادرات وفق التسلسل التاريخي'}
-                {statusFilter === 'ongoing' && 'المبادرات الجاري تنفيذها'}
-                {statusFilter === 'upcoming' && 'المبادرات القادمة وقيد الإعداد'}
-                {statusFilter === 'completed' && 'المبادرات المنتهية والمقفلة'}
-                {' '}({filteredPrograms.length})
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredPrograms.map((prog) => {
-                const progTasks = tasks.filter((t) => t.programId === prog.id);
-                const progStatus = getProgramStatus(prog);
-                const isCompleted = progStatus === 'completed';
-                const isOngoing = progStatus === 'ongoing';
-                const isUpcoming = progStatus === 'upcoming';
-
-                return (
-                  <div
-                    key={prog.id}
-                    onClick={() => handleSelectProgram(prog.id)}
-                    className={`rounded-3xl p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-                      isCompleted
-                        ? 'bg-[#fafafa]/90 opacity-65 grayscale-[35%] hover:opacity-90 border-dashed border-stone-300 shadow-none'
-                        : isOngoing
-                        ? 'bg-[#ffffff] border-2 border-emerald-300 ring-2 ring-emerald-500/20 bg-gradient-to-b from-white to-emerald-50/15 shadow-[0_4px_16px_rgba(16,185,129,0.08)] hover:shadow-[0_10px_28px_rgba(16,185,129,0.14)]'
-                        : 'bg-[#ffffff] border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-[0_10px_28px_rgba(0,0,0,0.06)] active:scale-[0.99]'
-                    }`}
-                  >
-                    <div className="space-y-3">
-                      {/* 1. اسم المبادرة */}
-                      <div className="space-y-1">
-                        <h3 className={`text-lg sm:text-xl font-semibold tracking-tight transition-colors leading-snug ${
-                          isOngoing ? 'text-emerald-950 group-hover:text-emerald-700' : 'text-[#1d1d1f] group-hover:text-[#0071e3]'
-                        }`}>
-                          {prog.name}
-                        </h3>
-                      </div>
-
-                      {/* 2. وتحتها تعريف بسيط */}
-                      <p className="text-[13px] text-[#86868b] leading-relaxed line-clamp-3">
-                        {prog.description}
-                      </p>
-
-                      {/* 3. وتحتها التاريخ & 4. نوع المرحلة */}
-                      <div className="pt-3 border-t border-black/[0.04] space-y-2">
-                        {/* التاريخ */}
-                        <div className="flex items-center gap-2 text-[12px] text-[#1d1d1f]">
-                          <Calendar className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
-                          <span className="font-medium text-[#1d1d1f]">التاريخ:</span>
-                          <span className="font-mono text-[#86868b]">{prog.gregorianDate} ({prog.month})</span>
-                        </div>
-
-                        {/* نوع المرحلة */}
-                        <div className="flex items-center gap-2 text-[12px] text-[#1d1d1f]">
-                          <GraduationCap className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
-                          <span className="font-medium text-[#1d1d1f]">المرحلة:</span>
-                          <span className="text-[#0071e3] font-medium bg-[#f5f5f7] px-2.5 py-0.5 rounded-full text-[11px]">
-                            {prog.stageLabel}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Tasks count, WhatsApp Share, & Actions */}
-                    <div className="mt-5 pt-3.5 border-t border-black/[0.04] flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setProgramForWhatsApp(prog);
-                          }}
-                          className="px-3 py-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors flex items-center gap-1.5 cursor-pointer border border-emerald-200/60 shrink-0"
-                          title="إرسال المبادرة للطلاب عبر واتساب"
-                        >
-                          <Share2 className="w-3 h-3 text-emerald-600" />
-                          <span>إرسال واتساب</span>
-                        </button>
-
-                        {isEffectiveSupervisor && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProgramToDelete(prog);
-                            }}
-                            className="px-2.5 py-1.5 text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-rose-200/80 shrink-0"
-                            title="حذف المبادرة"
-                          >
-                            <Trash2 className="w-3 h-3 text-rose-600" />
-                            <span>حذف</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {isCompleted ? (
-                          <span className="text-[11px] font-medium text-stone-500 bg-stone-100/90 px-2.5 py-1 rounded-full flex items-center gap-1">
-                            <Lock className="w-3 h-3 text-stone-400" />
-                            <span>مقفلة</span>
-                          </span>
-                        ) : isOngoing ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleJoinInitiative(prog);
-                            }}
-                            className="px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-all flex items-center gap-1 shadow-xs cursor-pointer"
-                          >
-                            <UserPlus className="w-3 h-3" />
-                            <span>انضمام</span>
-                          </button>
-                        ) : (
-                          <span className="text-[11px] sm:text-[12px] text-[#86868b] font-mono">
-                            {progTasks.length} {progTasks.length === 1 ? 'مهمة' : 'مهام'}
-                          </span>
-                        )}
-
-                        <span className="text-[12px] sm:text-[13px] font-medium text-[#0071e3] group-hover:underline flex items-center gap-1">
-                          <span>عرض التفاصيل</span>
-                          <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {programs.length === 0 && (
+          ) : programs.length === 0 ? (
             <div className="text-center py-16 bg-[#ffffff] rounded-3xl border border-black/[0.04] p-8">
               <BookOpen className="w-10 h-10 text-[#86868b] mx-auto mb-2 opacity-40" />
               <h3 className="text-base font-semibold text-[#1d1d1f]">لا توجد مبادرات مطروحة حالياً</h3>
               <p className="text-[13px] text-[#86868b] mt-1 mb-4">
                 سيتم إدراج المبادرات وفق الخطة المركزية للأنشطة الطلابية.
               </p>
-              <button
-                onClick={() => setIsAddProgramOpen(true)}
-                className="px-4 py-2 bg-[#0071e3] text-white text-[13px] rounded-full cursor-pointer"
-              >
-                + إضافة مبادرة جديدة
-              </button>
+              {isEffectiveSupervisor && (
+                <button
+                  onClick={() => setIsAddProgramOpen(true)}
+                  className="px-4 py-2 bg-[#0071e3] text-white text-[13px] rounded-full cursor-pointer"
+                >
+                  + إضافة مبادرة جديدة
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-[#ffffff] rounded-3xl border border-black/[0.04] p-6">
+              <BookOpen className="w-9 h-9 text-[#86868b] mx-auto mb-2 opacity-40" />
+              <h3 className="text-[15px] font-semibold text-[#1d1d1f]">
+                {statusFilter === 'ongoing' && 'لا توجد مبادرات جاري تنفيذها حالياً'}
+                {statusFilter === 'upcoming' && 'لا توجد مبادرات قادمة حالياً'}
+                {statusFilter === 'completed' && 'لا توجد مبادرات منتهية حالياً'}
+              </h3>
             </div>
           )}
         </div>
@@ -783,6 +937,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             const isSelectedProgCompleted = selectedProgStatus === 'completed';
             const isSelectedProgOngoing = selectedProgStatus === 'ongoing';
             const isSelectedProgUpcoming = selectedProgStatus === 'upcoming';
+            const selectedDomainMeta = resolveActivityDomainMeta(selectedProgram.domain, selectedProgram.domainName);
 
             return (
               <>
@@ -814,8 +969,12 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                             منتهية ومقفلة
                           </span>
                         )}
+                        <span className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-0.5 rounded-full border ${selectedDomainMeta.bgColor} ${selectedDomainMeta.badgeColor}`}>
+                          <Tag className="w-3 h-3 shrink-0" />
+                          <span>التصنيف: {selectedDomainMeta.name}</span>
+                        </span>
                         <span className="text-[12px] font-medium text-[#0071e3] bg-[#f5f5f7] px-2.5 py-0.5 rounded-full inline-block">
-                          {selectedProgram.stageLabel} · {selectedProgram.domainName}
+                          {selectedProgram.stageLabel}
                         </span>
                       </div>
 
