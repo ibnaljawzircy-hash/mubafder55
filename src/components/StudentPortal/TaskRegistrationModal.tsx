@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Award, CheckCircle2, Clock, MapPin, Sparkles, User, X } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerTask } from '../../types';
 
@@ -27,6 +27,15 @@ export const TaskRegistrationModal: React.FC<TaskRegistrationModalProps> = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [successStudent, setSuccessStudent] = useState<Student | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMobile(currentStudent?.mobile || '');
+      setLast5Digits(currentStudent ? currentStudent.mobile.slice(-5) : '');
+      setError(null);
+      setSuccessStudent(null);
+    }
+  }, [isOpen, task.id, currentStudent]);
 
   if (!isOpen) return null;
 

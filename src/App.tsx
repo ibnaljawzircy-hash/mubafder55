@@ -936,7 +936,7 @@ export default function App() {
       />
 
       {/* Main Content Area: Responsive container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-3 sm:py-6">
         {/* FIRST PAGE: Initiatives Explorer */}
         {activeTab === 'programs' && (
           <ProgramsExplorer

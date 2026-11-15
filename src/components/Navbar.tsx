@@ -28,7 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSwitchToStudent,
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-[#f5f5f7]/85 backdrop-blur-xl border-b border-black/[0.06] transition-all">
+    <header className="relative z-30 bg-[#f5f5f7] border-b border-black/[0.06] transition-all">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-14">
           {/* Brand - Apple minimal style */}

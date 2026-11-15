@@ -367,30 +367,40 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
     }
 
     if (availableTask) {
-      setTaskForRegistration(availableTask);
+      if (currentStudent) {
+        onConfirmRegistration(currentStudent, availableTask.id);
+      } else {
+        setTaskForRegistration(availableTask);
+      }
     }
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* If student is logged in: clean greeting banner */}
+    <div className="space-y-3 sm:space-y-5">
+      {/* If student is logged in: compact greeting banner */}
       {currentStudent && (
-        <div className="bg-[#ffffff] rounded-2xl p-4 sm:p-5 border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#f5f5f7] text-[#1d1d1f] font-semibold flex items-center justify-center text-sm border border-black/[0.06] shrink-0">
-              {currentStudent.name.charAt(0)}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[14px] font-semibold text-[#1d1d1f]">{currentStudent.name}</span>
-                <span className="text-[11px] text-[#86868b] bg-[#f5f5f7] px-2 py-0.5 rounded-full">
-                  {currentStudent.stage === 'primary' ? 'المرحلة الابتدائية' : 'المرحلة المتوسطة'}
-                </span>
+        <div className="bg-[#ffffff] rounded-2xl p-3 sm:p-4 border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex items-center justify-between sm:justify-start gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#f5f5f7] text-[#1d1d1f] font-semibold flex items-center justify-center text-xs sm:text-sm border border-black/[0.06] shrink-0">
+                {currentStudent.name.charAt(0)}
               </div>
-              <div className="text-[12px] text-[#86868b] flex items-center gap-2 mt-0.5">
-                <span className="font-mono font-semibold text-[#0071e3]">{currentStudent.totalHours} ساعات موثقة</span>
-                <span>·</span>
-                <span>{currentStudent.badgeLevel}</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[13px] sm:text-[14px] font-semibold text-[#1d1d1f] truncate">
+                    {currentStudent.name}
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] text-[#86868b] bg-[#f5f5f7] px-2 py-0.5 rounded-full shrink-0">
+                    {currentStudent.stage === 'primary' ? 'الابتدائية' : 'المتوسطة'}
+                  </span>
+                </div>
+                <div className="text-[11px] sm:text-[12px] text-[#86868b] flex items-center gap-1.5 mt-0.5">
+                  <span className="font-mono font-semibold text-[#0071e3] tabular-nums">
+                    {currentStudent.totalHours} ساعات موثقة
+                  </span>
+                  <span>·</span>
+                  <span>{currentStudent.badgeLevel}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -399,7 +409,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             {onOpenMyTasks && (
               <button
                 onClick={onOpenMyTasks}
-                className="px-4 py-2 text-[12px] font-medium text-[#1d1d1f] bg-[#f5f5f7] hover:bg-[#e8e8ed] rounded-full transition-colors flex-1 sm:flex-none text-center cursor-pointer"
+                className="px-3.5 py-1.5 text-[11.5px] sm:text-[12px] font-medium text-[#1d1d1f] bg-[#f5f5f7] hover:bg-[#e8e8ed] rounded-full transition-colors flex-1 sm:flex-none text-center cursor-pointer whitespace-nowrap"
               >
                 سجل ساعاتي
               </button>
@@ -407,7 +417,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             {onOpenCertificate && (
               <button
                 onClick={onOpenCertificate}
-                className="px-4 py-2 text-[12px] font-medium text-white bg-[#0071e3] hover:bg-[#0077ed] rounded-full transition-colors flex items-center justify-center gap-1.5 flex-1 sm:flex-none shadow-none cursor-pointer"
+                className="px-3.5 py-1.5 text-[11.5px] sm:text-[12px] font-medium text-white bg-[#0071e3] hover:bg-[#0077ed] rounded-full transition-colors flex items-center justify-center gap-1.5 flex-1 sm:flex-none shadow-none cursor-pointer whitespace-nowrap"
               >
                 <Award className="w-3.5 h-3.5" />
                 <span>شهادة التطوع</span>
@@ -419,18 +429,18 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
       {/* Main Content View */}
       {!selectedProgram ? (
-        /* ================= FIRST PAGE: INITIATIVES CARDS (MOBILE OPTIMIZED) ================= */
-        <div className="space-y-6">
+        /* ================= FIRST PAGE: INITIATIVES WHEEL (MOBILE OPTIMIZED) ================= */
+        <div className="space-y-3 sm:space-y-4">
           {/* Header Title & Subtitle + Supervisor Add Button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
-            <div className="text-center sm:text-right space-y-1.5">
-              <span className="text-[11px] sm:text-[12px] font-semibold text-[#86868b] tracking-wide uppercase">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 px-1">
+            <div className="text-center sm:text-right space-y-0.5 sm:space-y-1">
+              <span className="text-[10.5px] sm:text-[12px] font-semibold text-[#86868b] tracking-wide uppercase block">
                 منصة مبادر بمدرسة ابن الجوزي للموهوبين
               </span>
-              <h1 className="text-2xl sm:text-4xl font-semibold text-[#1d1d1f] tracking-tight leading-tight">
+              <h1 className="text-xl sm:text-3xl font-semibold text-[#1d1d1f] tracking-tight leading-snug">
                 بادر بالتطوع، وكن جزءاً من التغيير في مجتمعك المدرسي.
               </h1>
-              <p className="text-[13px] sm:text-[15px] text-[#86868b] leading-relaxed">
+              <p className="text-[12px] sm:text-[14px] text-[#86868b] leading-snug">
                 عطاء يصنع الفرق في ذاتك ومهاراتك ومجتمعك
               </p>
             </div>
@@ -439,7 +449,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
               <div className="flex flex-wrap items-center gap-2 shrink-0 self-center sm:self-auto">
                 <button
                   onClick={() => setIsImportExcelOpen(true)}
-                  className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[13px] font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 border border-emerald-200/80 cursor-pointer shadow-2xs"
+                  className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[12px] sm:text-[13px] font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 border border-emerald-200/80 cursor-pointer shadow-2xs"
                   title="استيراد المبادرات من ملف إكسل"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -448,7 +458,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
                 <button
                   onClick={() => setIsAddProgramOpen(true)}
-                  className="px-5 py-2.5 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 shadow-none cursor-pointer"
+                  className="px-4 sm:px-5 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] sm:text-[13px] font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 shadow-none cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة مبادرة جديدة</span>
@@ -598,8 +608,8 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
               }}
               className={`relative w-full overflow-hidden select-none outline-none touch-pan-y ${
                 filteredPrograms.length === 1
-                  ? 'h-[290px] sm:h-[310px]'
-                  : 'h-[540px] sm:h-[580px]'
+                  ? 'h-[244px] sm:h-[268px]'
+                  : 'h-[430px] sm:h-[490px]'
               } ${isWheelDragging ? 'cursor-grabbing' : filteredPrograms.length > 1 ? 'cursor-grab' : ''}`}
             >
               {/* Soft edge fade masks to blend wheel slots cleanly into #f5f5f7 */}
@@ -607,11 +617,11 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                 <>
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 top-0 h-10 sm:h-12 bg-gradient-to-b from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-8 sm:h-10 bg-gradient-to-b from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
                   />
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-10 sm:h-12 bg-gradient-to-t from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8 sm:h-10 bg-gradient-to-t from-[#f5f5f7] via-[#f5f5f7]/65 to-transparent z-40"
                   />
                 </>
               )}
@@ -670,19 +680,37 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                   const isCenter = offset === 0;
                   const domainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
 
+                  // Current student's registration / acceptance state on this initiative
+                  const studentProgReg = currentStudent
+                    ? registrations.find(
+                        (r) =>
+                          r.studentId === currentStudent.id &&
+                          (r.programId === prog.id || progTasks.some((t) => t.id === r.taskId))
+                      )
+                    : undefined;
+
+                  const isRegAccepted = Boolean(
+                    studentProgReg &&
+                      (studentProgReg.attendanceStatus === 'completed' ||
+                        studentProgReg.approvalStatus === 'approved' ||
+                        studentProgReg.attendanceStatus === 'attended')
+                  );
+                  const isRegRejected = studentProgReg?.approvalStatus === 'rejected';
+                  const isRegPending = Boolean(studentProgReg && !isRegAccepted && !isRegRejected);
+
                   let baseTranslateY = 0;
                   let scale = 1;
                   let opacity = 1;
                   let zIndex = 30;
 
                   if (offset === -2) {
-                    baseTranslateY = -270;
+                    baseTranslateY = -236;
                     scale = 0.82;
                     opacity = 0;
                     zIndex = 10;
                   } else if (offset === -1) {
-                    baseTranslateY = -148;
-                    scale = 0.91;
+                    baseTranslateY = -126;
+                    scale = 0.90;
                     opacity = isCompleted ? 0.62 : 0.78;
                     zIndex = 20;
                   } else if (offset === 0) {
@@ -691,12 +719,12 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                     opacity = 1;
                     zIndex = 30;
                   } else if (offset === 1) {
-                    baseTranslateY = 206;
-                    scale = 0.91;
+                    baseTranslateY = 176;
+                    scale = 0.90;
                     opacity = isCompleted ? 0.62 : 0.78;
                     zIndex = 20;
                   } else if (offset === 2) {
-                    baseTranslateY = 330;
+                    baseTranslateY = 286;
                     scale = 0.82;
                     opacity = 0;
                     zIndex = 10;
@@ -725,7 +753,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           : 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1)',
                         pointerEvents: Math.abs(offset) > 1 ? 'none' : 'auto',
                       }}
-                      className={`absolute inset-x-1 sm:inset-x-14 top-1/2 h-[246px] sm:h-[264px] rounded-3xl p-4 sm:p-6 flex flex-col justify-between cursor-pointer group ${
+                      className={`absolute inset-x-1 sm:inset-x-14 top-1/2 h-[214px] sm:h-[238px] rounded-3xl p-4 sm:p-5 flex flex-col justify-between cursor-pointer group ${
                         isCenter
                           ? isOngoing
                             ? 'bg-gradient-to-br from-white via-emerald-50/30 to-emerald-100/35 border-2 border-emerald-400 shadow-[0_14px_38px_rgba(16,185,129,0.16)]'
@@ -739,18 +767,18 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           : 'bg-[#ffffff] border border-black/[0.06] shadow-sm'
                       }`}
                     >
-                      <div className="space-y-2 sm:space-y-2.5 min-w-0">
+                      <div className="space-y-1.5 sm:space-y-2 min-w-0">
                         {/* Metadata row */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-[12px]">
-                          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 text-[10.5px] sm:text-[12px]">
+                          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-wrap">
                             <span
-                              className={`inline-flex items-center gap-1 font-semibold px-2.5 py-0.5 rounded-full border shrink-0 ${domainMeta.bgColor} ${domainMeta.badgeColor}`}
+                              className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full border shrink-0 ${domainMeta.bgColor} ${domainMeta.badgeColor}`}
                             >
                               <Tag className="w-3 h-3 shrink-0" />
                               <span>{domainMeta.name}</span>
                             </span>
 
-                            <span className="text-[#0071e3] font-medium bg-[#f5f5f7] px-2.5 py-0.5 rounded-full shrink-0">
+                            <span className="text-[#0071e3] font-medium bg-[#f5f5f7] px-2 py-0.5 rounded-full shrink-0">
                               {prog.stageLabel}
                             </span>
 
@@ -760,17 +788,17 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           </div>
 
                           {isOngoing && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
                               جاري تنفيذها الآن
                             </span>
                           )}
                           {progStatus === 'upcoming' && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/70 shrink-0">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70 shrink-0">
                               قادمة
                             </span>
                           )}
                           {isCompleted && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-600 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200 shrink-0">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-medium text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200 shrink-0">
                               <Lock className="w-3 h-3 text-stone-500" />
                               <span>منتهية</span>
                             </span>
@@ -779,7 +807,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
                         {/* Title */}
                         <h3
-                          className={`text-[17px] sm:text-[21px] font-bold tracking-tight leading-snug line-clamp-2 transition-colors ${
+                          className={`text-[15.5px] sm:text-[19px] font-bold tracking-tight leading-snug line-clamp-2 transition-colors ${
                             isOngoing
                               ? 'text-emerald-950 group-hover:text-emerald-700'
                               : isCompleted
@@ -791,41 +819,88 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                         </h3>
 
                         {/* Brief Description */}
-                        <p className="text-[12.5px] sm:text-[13.5px] text-[#6e6e73] leading-relaxed line-clamp-2">
+                        <p className="text-[12px] sm:text-[13px] text-[#6e6e73] leading-relaxed line-clamp-1 sm:line-clamp-2">
                           {prog.description}
                         </p>
                       </div>
 
-                      <div className="space-y-2.5">
+                      <div className="space-y-2">
                         {/* Date & Organizer */}
-                        <div className="flex items-center gap-2 text-[11.5px] sm:text-[12px] text-[#86868b] truncate">
-                          <Calendar className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
-                          <span className="font-mono text-[#1d1d1f] tabular-nums shrink-0">
-                            {prog.gregorianDate} ({prog.month})
+                        <div className="flex items-center justify-between gap-2 text-[11px] sm:text-[12px] text-[#86868b]">
+                          <div className="flex items-center gap-1.5 min-w-0 truncate">
+                            <Calendar className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
+                            <span className="font-mono text-[#1d1d1f] tabular-nums shrink-0">
+                              {prog.gregorianDate} ({prog.month})
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span className="truncate">{prog.organizer}</span>
+                          </div>
+
+                          <span className="text-[11px] sm:text-[12px] font-medium text-[#0071e3] group-hover:underline flex items-center gap-0.5 whitespace-nowrap shrink-0">
+                            <span>التفاصيل</span>
+                            <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
                           </span>
-                          <span aria-hidden="true">·</span>
-                          <span className="truncate">{prog.organizer}</span>
                         </div>
 
-                        {/* Actions row (only interactive when centered) */}
-                        <div className="pt-2.5 border-t border-black/[0.05] flex items-center justify-between gap-1.5 sm:gap-2">
-                          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              tabIndex={isCenter ? 0 : -1}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!isCenter) return;
-                                setProgramForWhatsApp(prog);
-                              }}
-                              className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-emerald-200/60 shrink-0 whitespace-nowrap"
-                              title="إرسال المبادرة للطلاب عبر واتساب"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span className="sm:hidden">واتساب</span>
-                              <span className="hidden sm:inline">إرسال واتساب</span>
-                            </button>
+                        {/* Actions row (اشتراك · تم قبول · واتس اب) */}
+                        <div className="pt-2 border-t border-black/[0.05] flex items-center justify-between gap-1.5 sm:gap-2">
+                          {/* Right side: اشتراك + حالة القبول (تم قبول / بانتظار القبول) */}
+                          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            {!isCompleted && !studentProgReg && (
+                              <button
+                                type="button"
+                                tabIndex={isCenter ? 0 : -1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isCenter) return;
+                                  handleJoinInitiative(prog);
+                                }}
+                                className="px-3 sm:px-4 py-1.5 text-[11.5px] sm:text-[12px] font-semibold text-white bg-[#0071e3] hover:bg-[#0077ed] rounded-full transition-colors flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap"
+                              >
+                                <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                                <span>اشتراك</span>
+                              </button>
+                            )}
 
+                            {studentProgReg && (
+                              <>
+                                <span className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-medium text-[#1d1d1f] bg-[#f5f5f7] rounded-full border border-black/[0.06] inline-flex items-center gap-1 whitespace-nowrap">
+                                  <Check className="w-3 h-3 text-[#0071e3] shrink-0" />
+                                  <span>مشترك</span>
+                                </span>
+
+                                {isRegAccepted && (
+                                  <span className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-semibold text-emerald-700 bg-emerald-50 rounded-full border border-emerald-200 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>تم قبول</span>
+                                  </span>
+                                )}
+
+                                {isRegPending && (
+                                  <span className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-medium text-amber-800 bg-amber-50 rounded-full border border-amber-200 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                                    <span>بانتظار القبول</span>
+                                  </span>
+                                )}
+
+                                {isRegRejected && (
+                                  <span className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-medium text-rose-700 bg-rose-50 rounded-full border border-rose-200 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <span>معتذر</span>
+                                  </span>
+                                )}
+                              </>
+                            )}
+
+                            {isCompleted && !studentProgReg && (
+                              <span className="px-2.5 py-1.5 text-[11px] font-medium text-stone-500 bg-stone-100 rounded-full border border-stone-200 inline-flex items-center gap-1 whitespace-nowrap">
+                                <Lock className="w-3 h-3 text-stone-400 shrink-0" />
+                                <span>مقفلة</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Left side: Supervisor actions (if supervisor) + واتس اب */}
+                          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                             {isEffectiveSupervisor && (
                               <>
                                 <button
@@ -858,31 +933,21 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                                 </button>
                               </>
                             )}
-                          </div>
 
-                          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                            {isOngoing && (
-                              <button
-                                type="button"
-                                tabIndex={isCenter ? 0 : -1}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!isCenter) return;
-                                  handleJoinInitiative(prog);
-                                }}
-                                className="px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-[12px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-full transition-colors flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap"
-                              >
-                                <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                                <span className="sm:hidden">انضمام</span>
-                                <span className="hidden sm:inline">انضمام فوري</span>
-                              </button>
-                            )}
-
-                            <span className="text-[11.5px] sm:text-[13px] font-medium text-[#0071e3] group-hover:underline flex items-center gap-0.5 whitespace-nowrap">
-                              <span className="sm:hidden">التفاصيل</span>
-                              <span className="hidden sm:inline">عرض التفاصيل</span>
-                              <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-                            </span>
+                            <button
+                              type="button"
+                              tabIndex={isCenter ? 0 : -1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!isCenter) return;
+                                setProgramForWhatsApp(prog);
+                              }}
+                              className="px-3 sm:px-3.5 py-1.5 text-[11.5px] sm:text-[12px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors flex items-center gap-1.5 cursor-pointer border border-emerald-200/60 shrink-0 whitespace-nowrap"
+                              title="إرسال المبادرة للطلاب عبر واتساب"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>واتس اب</span>
+                            </button>
                           </div>
                         </div>
                       </div>
