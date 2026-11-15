@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   GraduationCap,
   HeartHandshake,
+  Lock,
   Percent,
   Plus,
   Send,
@@ -23,9 +24,13 @@ import {
 import { ACTIVITY_DOMAINS } from '../../data/yanbuPlanData';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
 import {
+  getProgramSeatStats,
+  getProgramStatus,
+  resolveActivityDomainMeta,
   resolveProgramDomainId,
   resolveRegistrationDomainId,
   resolveTaskDomainId,
+  sortProgramsChronologically,
 } from '../../utils/programHelpers';
 
 interface TeacherDashboardProps {
@@ -145,6 +150,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     (stu) => !registrations.some((r) => r.studentId === stu.id)
   ).length;
   const incompleteOnlyCount = nonParticipatingStudents.length - neverRegisteredCount;
+
+  // Initiatives seat overview (active & upcoming first, then any full/other)
+  const initiativeSeatRows = sortProgramsChronologically(programs)
+    .map((prog) => {
+      const status = getProgramStatus(prog);
+      const seatStats = getProgramSeatStats(prog, tasks, registrations);
+      const domainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
+      return { prog, status, seatStats, domainMeta };
+    })
+    .filter((item) => item.status !== 'completed');
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -636,6 +651,105 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Supervisor Overview: Initiatives Seat Capacity (Total & Remaining) */}
+      <div className="bg-[#ffffff] rounded-3xl p-6 sm:p-7 border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)] space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.04] pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[12px] text-[#86868b]">
+              <Users className="w-4 h-4 text-[#0071e3]" />
+              <span>سعة المقاعد في المبادرات النشطة والقادمة</span>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono tabular-nums">{initiativeSeatRows.length} مبادرة</span>
+            </div>
+            <h3 className="text-lg font-semibold text-[#1d1d1f]">
+              متابعة المقاعد المتاحة والمتبقية للمبادرات
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('programs')}
+            className="px-4 py-2 text-[12px] font-medium text-[#1d1d1f] bg-[#f5f5f7] hover:bg-[#e8e8ed] rounded-full transition-colors cursor-pointer whitespace-nowrap self-start sm:self-auto"
+          >
+            إدارة وتعديل المقاعد ←
+          </button>
+        </div>
+
+        {initiativeSeatRows.length === 0 ? (
+          <div className="py-8 text-center text-[13px] text-[#86868b]">
+            لا توجد مبادرات جارية أو قادمة حالياً.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-[12px]">
+              <thead className="bg-[#f5f5f7] text-[#86868b] font-medium border-b border-black/[0.04]">
+                <tr>
+                  <th className="p-3">المبادرة</th>
+                  <th className="p-3">المجال والتاريخ</th>
+                  <th className="p-3 text-center">عدد المقاعد المتاحة</th>
+                  <th className="p-3 text-center">المسجلون</th>
+                  <th className="p-3 text-center">المقاعد المتبقية</th>
+                  <th className="p-3 text-center">الحالة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/[0.04]">
+                {initiativeSeatRows.map(({ prog, status, seatStats, domainMeta }) => (
+                  <tr key={prog.id} className="hover:bg-[#f5f5f7]/60 transition-colors">
+                    <td className="p-3 font-semibold text-[#1d1d1f] max-w-[260px]">
+                      <span className="block truncate">{prog.name}</span>
+                    </td>
+                    <td className="p-3 text-[#6e6e73] whitespace-nowrap">
+                      <span>{domainMeta.name}</span>
+                      <span className="mx-1.5" aria-hidden="true">·</span>
+                      <span className="font-mono tabular-nums">{prog.gregorianDate}</span>
+                    </td>
+                    <td className="p-3 text-center font-mono tabular-nums font-semibold text-[#1d1d1f]">
+                      {seatStats.maxSeats !== null ? seatStats.maxSeats : 'مفتوح'}
+                    </td>
+                    <td className="p-3 text-center font-mono tabular-nums text-[#6e6e73]">
+                      {seatStats.occupiedSeats}
+                    </td>
+                    <td className="p-3 text-center font-mono tabular-nums font-bold">
+                      {seatStats.maxSeats !== null ? (
+                        <span
+                          className={
+                            seatStats.isFull
+                              ? 'text-rose-600'
+                              : seatStats.remainingSeats !== null && seatStats.remainingSeats <= 3
+                              ? 'text-amber-700'
+                              : 'text-emerald-700'
+                          }
+                        >
+                          {seatStats.remainingSeats}
+                        </span>
+                      ) : (
+                        <span className="text-[#86868b] font-normal">مفتوح</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      {seatStats.isFull ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700">
+                          <Lock className="w-3 h-3" />
+                          <span>مقفلة · اكتمل العدد</span>
+                        </span>
+                      ) : status === 'ongoing' ? (
+                        <span className="text-[11px] font-semibold text-emerald-700">
+                          جاري تنفيذها
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-amber-800">
+                          قادمة
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

@@ -23,6 +23,7 @@ export interface ActivityProgram {
   organizer: string;
   description: string;
   status?: 'ongoing' | 'upcoming' | 'completed';
+  maxSeats?: number;
 }
 
 export interface VolunteerTask {

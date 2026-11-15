@@ -425,6 +425,7 @@ export const NonParticipatingStudents: React.FC<NonParticipatingStudentsProps> =
         targetDescription.trim() ||
         'مبادرة تطوعية مخصصة لدمج وتحفيز الطلاب غير المشاركين ضمن مجالات النشاط المعتمدة.',
       status: targetStatus,
+      maxSeats: Number(targetMaxVolunteers) > 0 ? Number(targetMaxVolunteers) : 20,
     };
 
     const taskPayload: Omit<

@@ -21,9 +21,11 @@ import {
   Tag,
   Trash2,
   UserPlus,
+  Users,
 } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
 import {
+  getProgramSeatStats,
   getProgramStatus,
   resolveActivityDomainMeta,
   resolveProgramDomainId,
@@ -335,11 +337,25 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
     if (!progToJoin) return;
 
     if (getProgramStatus(progToJoin) === 'completed') {
-      alert('هذه المبادرة منتهية ومقفلة، انتهت فترة التسجيل والمشاركة.');
       return;
     }
 
     const progTasks = tasks.filter((t) => t.programId === progToJoin.id);
+    const seatStats = getProgramSeatStats(progToJoin, tasks, registrations);
+    const alreadyActiveInProg = currentStudent
+      ? registrations.some(
+          (r) =>
+            r.studentId === currentStudent.id &&
+            (r.programId === progToJoin.id || progTasks.some((t) => t.id === r.taskId)) &&
+            r.approvalStatus !== 'rejected' &&
+            r.attendanceStatus !== 'absent'
+        )
+      : false;
+
+    if (seatStats.isFull && !alreadyActiveInProg) {
+      return;
+    }
+
     let availableTask =
       progTasks.find((t) => !isStudentRegistered(t.id)) ||
       progTasks[0];
@@ -355,7 +371,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
         description: progToJoin.description,
         stage: progToJoin.stage,
         hours: 2,
-        maxVolunteers: 25,
+        maxVolunteers: progToJoin.maxSeats && progToJoin.maxSeats > 0 ? progToJoin.maxSeats : 25,
         date: progToJoin.gregorianDate.replace(/\//g, '-'),
         time: '08:00 ص - 10:00 ص',
         location: 'مدرسة ابن الجوزي للموهوبين',
@@ -608,8 +624,8 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
               }}
               className={`relative w-full overflow-hidden select-none outline-none touch-pan-y ${
                 filteredPrograms.length === 1
-                  ? 'h-[244px] sm:h-[268px]'
-                  : 'h-[430px] sm:h-[490px]'
+                  ? 'h-[256px] sm:h-[280px]'
+                  : 'h-[456px] sm:h-[516px]'
               } ${isWheelDragging ? 'cursor-grabbing' : filteredPrograms.length > 1 ? 'cursor-grab' : ''}`}
             >
               {/* Soft edge fade masks to blend wheel slots cleanly into #f5f5f7 */}
@@ -679,6 +695,8 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                   const isOngoing = progStatus === 'ongoing';
                   const isCenter = offset === 0;
                   const domainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
+                  const seatStats = getProgramSeatStats(prog, tasks, registrations);
+                  const isLockedBySeats = seatStats.isFull;
 
                   // Current student's registration / acceptance state on this initiative
                   const studentProgReg = currentStudent
@@ -704,12 +722,12 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                   let zIndex = 30;
 
                   if (offset === -2) {
-                    baseTranslateY = -236;
+                    baseTranslateY = -248;
                     scale = 0.82;
                     opacity = 0;
                     zIndex = 10;
                   } else if (offset === -1) {
-                    baseTranslateY = -126;
+                    baseTranslateY = -132;
                     scale = 0.90;
                     opacity = isCompleted ? 0.62 : 0.78;
                     zIndex = 20;
@@ -719,12 +737,12 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                     opacity = 1;
                     zIndex = 30;
                   } else if (offset === 1) {
-                    baseTranslateY = 176;
+                    baseTranslateY = 184;
                     scale = 0.90;
                     opacity = isCompleted ? 0.62 : 0.78;
                     zIndex = 20;
                   } else if (offset === 2) {
-                    baseTranslateY = 286;
+                    baseTranslateY = 298;
                     scale = 0.82;
                     opacity = 0;
                     zIndex = 10;
@@ -753,14 +771,14 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           : 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1)',
                         pointerEvents: Math.abs(offset) > 1 ? 'none' : 'auto',
                       }}
-                      className={`absolute inset-x-1 sm:inset-x-14 top-1/2 h-[214px] sm:h-[238px] rounded-3xl p-4 sm:p-5 flex flex-col justify-between cursor-pointer group ${
+                      className={`absolute inset-x-1 sm:inset-x-14 top-1/2 h-[228px] sm:h-[252px] rounded-3xl p-4 sm:p-5 flex flex-col justify-between cursor-pointer group ${
                         isCenter
-                          ? isOngoing
+                          ? isOngoing && !isLockedBySeats
                             ? 'bg-gradient-to-br from-white via-emerald-50/30 to-emerald-100/35 border-2 border-emerald-400 shadow-[0_14px_38px_rgba(16,185,129,0.16)]'
-                            : isCompleted
+                            : isCompleted || isLockedBySeats
                             ? 'bg-[#fafafa] border border-stone-300 shadow-[0_12px_32px_rgba(0,0,0,0.06)]'
                             : 'bg-[#ffffff] border border-black/[0.08] shadow-[0_14px_38px_rgba(0,0,0,0.08)]'
-                          : isCompleted
+                          : isCompleted || isLockedBySeats
                           ? 'bg-[#f8f8fa] border border-stone-200/80 shadow-xs'
                           : isOngoing
                           ? 'bg-[#ffffff] border border-emerald-300/80 shadow-sm'
@@ -787,20 +805,23 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                             </span>
                           </div>
 
-                          {isOngoing && (
-                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                              جاري تنفيذها الآن
-                            </span>
-                          )}
-                          {progStatus === 'upcoming' && (
-                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70 shrink-0">
-                              قادمة
-                            </span>
-                          )}
-                          {isCompleted && (
+                          {isCompleted ? (
                             <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-medium text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200 shrink-0">
                               <Lock className="w-3 h-3 text-stone-500" />
                               <span>منتهية</span>
+                            </span>
+                          ) : isLockedBySeats ? (
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
+                              <Lock className="w-3 h-3 text-rose-600" />
+                              <span>اكتمل العدد</span>
+                            </span>
+                          ) : isOngoing ? (
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                              جاري تنفيذها الآن
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70 shrink-0">
+                              قادمة
                             </span>
                           )}
                         </div>
@@ -819,9 +840,58 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                         </h3>
 
                         {/* Brief Description */}
-                        <p className="text-[12px] sm:text-[13px] text-[#6e6e73] leading-relaxed line-clamp-1 sm:line-clamp-2">
+                        <p className="text-[12px] sm:text-[13px] text-[#6e6e73] leading-relaxed line-clamp-1">
                           {prog.description}
                         </p>
+
+                        {/* Seat capacity summary: Total & Remaining seats (for students & supervisor) */}
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] sm:text-[12.5px] pt-0.5">
+                          <span className="inline-flex items-center gap-1 text-[#6e6e73]">
+                            <Users className="w-3.5 h-3.5 text-[#0071e3] shrink-0" />
+                            <span>عدد المقاعد المتاحة:</span>
+                            <strong className="font-mono tabular-nums text-[#1d1d1f]">
+                              {seatStats.maxSeats !== null ? seatStats.maxSeats : 'مفتوح'}
+                            </strong>
+                          </span>
+
+                          <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+
+                          {seatStats.maxSeats !== null ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[#6e6e73]">المقاعد المتبقية:</span>
+                              <strong
+                                className={`font-mono tabular-nums ${
+                                  isLockedBySeats
+                                    ? 'text-rose-600'
+                                    : seatStats.remainingSeats !== null && seatStats.remainingSeats <= 3
+                                    ? 'text-amber-700'
+                                    : 'text-emerald-700'
+                                }`}
+                              >
+                                {seatStats.remainingSeats}
+                              </strong>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[#6e6e73]">
+                              <span>المسجلون:</span>
+                              <strong className="font-mono tabular-nums text-[#1d1d1f]">
+                                {seatStats.occupiedSeats}
+                              </strong>
+                            </span>
+                          )}
+
+                          {isEffectiveSupervisor && seatStats.maxSeats !== null && (
+                            <>
+                              <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+                              <span className="inline-flex items-center gap-1 text-[#6e6e73]">
+                                <span>المشتركون:</span>
+                                <strong className="font-mono tabular-nums text-[#1d1d1f]">
+                                  {seatStats.occupiedSeats}
+                                </strong>
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -844,9 +914,9 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
                         {/* Actions row (اشتراك · تم قبول · واتس اب) */}
                         <div className="pt-2 border-t border-black/[0.05] flex items-center justify-between gap-1.5 sm:gap-2">
-                          {/* Right side: اشتراك + حالة القبول (تم قبول / بانتظار القبول) */}
+                          {/* Right side: اشتراك + حالة القبول (تم قبول / بانتظار القبول) + قفل عند اكتمال العدد */}
                           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                            {!isCompleted && !studentProgReg && (
+                            {!isCompleted && !isLockedBySeats && !studentProgReg && (
                               <button
                                 type="button"
                                 tabIndex={isCenter ? 0 : -1}
@@ -889,6 +959,13 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                                   </span>
                                 )}
                               </>
+                            )}
+
+                            {isLockedBySeats && !studentProgReg && !isCompleted && (
+                              <span className="px-2.5 sm:px-3 py-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 rounded-full border border-rose-200 inline-flex items-center gap-1 whitespace-nowrap">
+                                <Lock className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>مقفلة · اكتمل العدد</span>
+                              </span>
                             )}
 
                             {isCompleted && !studentProgReg && (
@@ -1003,11 +1080,13 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             const isSelectedProgOngoing = selectedProgStatus === 'ongoing';
             const isSelectedProgUpcoming = selectedProgStatus === 'upcoming';
             const selectedDomainMeta = resolveActivityDomainMeta(selectedProgram.domain, selectedProgram.domainName);
+            const selectedSeatStats = getProgramSeatStats(selectedProgram, tasks, registrations);
+            const isSelectedLockedBySeats = selectedSeatStats.isFull;
 
             return (
               <>
                 <div className={`rounded-3xl p-6 sm:p-8 border shadow-[0_2px_8px_rgba(0,0,0,0.02)] space-y-4 transition-all ${
-                  isSelectedProgCompleted
+                  isSelectedProgCompleted || isSelectedLockedBySeats
                     ? 'bg-[#fafafa]/90 border-dashed border-stone-300'
                     : isSelectedProgOngoing
                     ? 'bg-gradient-to-br from-white via-emerald-50/15 to-emerald-100/20 border-2 border-emerald-400 shadow-[0_8px_24px_rgba(16,185,129,0.08)]'
@@ -1016,16 +1095,22 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        {isSelectedProgOngoing && (
+                        {isSelectedProgOngoing && !isSelectedLockedBySeats && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
                             جاري تنفيذها الآن
                           </span>
                         )}
-                        {isSelectedProgUpcoming && (
+                        {isSelectedProgUpcoming && !isSelectedLockedBySeats && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200/80">
                             <Sliders className="w-3.5 h-3.5 text-amber-600" />
                             قادمة · قيد الإعداد
+                          </span>
+                        )}
+                        {isSelectedLockedBySeats && !isSelectedProgCompleted && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                            <Lock className="w-3.5 h-3.5 text-rose-600" />
+                            مقفلة · اكتمل العدد
                           </span>
                         )}
                         {isSelectedProgCompleted && (
@@ -1051,10 +1136,47 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                         {selectedProgram.description}
                       </p>
 
-                      <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#86868b] pt-1">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#86868b] pt-1">
                         <span>التاريخ: <strong className="text-[#1d1d1f] font-mono">{selectedProgram.gregorianDate} ({selectedProgram.month})</strong></span>
                         <span>·</span>
                         <span>الجهة: <strong className="text-[#1d1d1f]">{selectedProgram.organizer}</strong></span>
+                      </div>
+
+                      {/* Seat capacity summary for students & supervisor */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-black/[0.05] text-[13px]">
+                        <span className="inline-flex items-center gap-1.5 text-[#6e6e73]">
+                          <Users className="w-4 h-4 text-[#0071e3] shrink-0" />
+                          <span>عدد المقاعد المتاحة:</span>
+                          <strong className="font-mono tabular-nums text-[#1d1d1f]">
+                            {selectedSeatStats.maxSeats !== null ? selectedSeatStats.maxSeats : 'مفتوح'}
+                          </strong>
+                        </span>
+                        {selectedSeatStats.maxSeats !== null && (
+                          <>
+                            <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+                            <span className="inline-flex items-center gap-1.5 text-[#6e6e73]">
+                              <span>المقاعد المتبقية:</span>
+                              <strong
+                                className={`font-mono tabular-nums ${
+                                  isSelectedLockedBySeats
+                                    ? 'text-rose-600'
+                                    : selectedSeatStats.remainingSeats !== null && selectedSeatStats.remainingSeats <= 3
+                                    ? 'text-amber-700'
+                                    : 'text-emerald-700'
+                                }`}
+                              >
+                                {selectedSeatStats.remainingSeats}
+                              </strong>
+                            </span>
+                          </>
+                        )}
+                        <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+                        <span className="inline-flex items-center gap-1.5 text-[#6e6e73]">
+                          <span>المسجلون حالياً:</span>
+                          <strong className="font-mono tabular-nums text-[#1d1d1f]">
+                            {selectedSeatStats.occupiedSeats}
+                          </strong>
+                        </span>
                       </div>
                     </div>
 
@@ -1105,6 +1227,20 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           <Lock className="w-4 h-4 text-stone-400" />
                           <span>المبادرة مقفلة (منتهية)</span>
                         </button>
+                      ) : isSelectedLockedBySeats && !currentStudentProgramReg ? (
+                        <button
+                          disabled
+                          className="w-full sm:w-auto px-5 py-2.5 bg-rose-50 text-rose-700 text-[13px] font-semibold rounded-full flex items-center justify-center gap-1.5 cursor-not-allowed border border-rose-200"
+                          title="اكتمل العدد المخصص للمقاعد في هذه المبادرة"
+                        >
+                          <Lock className="w-4 h-4 text-rose-600" />
+                          <span>مقفلة · اكتمل العدد</span>
+                        </button>
+                      ) : currentStudentProgramReg ? (
+                        <span className="w-full sm:w-auto px-5 py-2.5 bg-[#f5f5f7] text-[#1d1d1f] text-[13px] font-medium rounded-full flex items-center justify-center gap-1.5 border border-black/[0.06]">
+                          <Check className="w-4 h-4 text-[#0071e3]" />
+                          <span>مشترك في المبادرة</span>
+                        </span>
                       ) : (
                         <button
                           onClick={() => handleJoinInitiative(selectedProgram)}
@@ -1115,15 +1251,15 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                           }`}
                         >
                           <UserPlus className="w-4 h-4" />
-                          <span>انضمام للمبادرة</span>
+                          <span>اشتراك في المبادرة</span>
                         </button>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Locked banner if completed */}
-                {isSelectedProgCompleted && (
+                {/* Locked banner if completed or seats full */}
+                {isSelectedProgCompleted ? (
                   <div className="flex items-center gap-3 bg-stone-100/90 border border-stone-200 text-stone-700 rounded-2xl p-4 animate-in fade-in">
                     <Lock className="w-5 h-5 text-stone-500 shrink-0" />
                     <div>
@@ -1135,7 +1271,19 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                       </span>
                     </div>
                   </div>
-                )}
+                ) : isSelectedLockedBySeats ? (
+                  <div className="flex items-center gap-3 bg-rose-50/90 border border-rose-200 text-rose-900 rounded-2xl p-4 animate-in fade-in">
+                    <Lock className="w-5 h-5 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="font-semibold text-[13px] block">
+                        تم قفل التسجيل تلقائياً لاكتمال المقاعد ({selectedSeatStats.occupiedSeats} / {selectedSeatStats.maxSeats})
+                      </span>
+                      <span className="text-[12px] text-rose-700">
+                        تم استيفاء جميع المقاعد المخصصة لهذه المبادرة.
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </>
             );
           })()}
@@ -1216,8 +1364,11 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {tasksForSelectedProgram.map((task) => {
-                  const taskRegs = registrations.filter((r) => r.taskId === task.id);
-                  const isFull = taskRegs.length >= task.maxVolunteers;
+                  const taskRegs = registrations.filter(
+                    (r) => r.taskId === task.id && r.approvalStatus !== 'rejected' && r.attendanceStatus !== 'absent'
+                  );
+                  const programSeatStats = getProgramSeatStats(selectedProgram, tasks, registrations);
+                  const isFull = taskRegs.length >= task.maxVolunteers || programSeatStats.isFull;
                   const alreadyRegistered = isStudentRegistered(task.id);
 
                   return (
@@ -1288,8 +1439,16 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
                       {/* Footer & Registration CTA */}
                       <div className="pt-3 border-t border-black/[0.04] flex items-center justify-between gap-3">
-                        <div className="text-[12px] font-mono text-[#86868b]">
-                          {taskRegs.length} / {task.maxVolunteers} متطوع
+                        <div className="text-[12px] text-[#6e6e73] flex flex-wrap items-center gap-x-2">
+                          <span>
+                            عدد المقاعد المتاحة: <strong className="font-mono tabular-nums text-[#1d1d1f]">{task.maxVolunteers}</strong>
+                          </span>
+                          <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+                          <span>
+                            المتبقية: <strong className={`font-mono tabular-nums ${
+                              isFull ? 'text-rose-600' : 'text-emerald-700'
+                            }`}>{Math.max(0, task.maxVolunteers - taskRegs.length)}</strong>
+                          </span>
                         </div>
 
                         {alreadyRegistered ? (
@@ -1303,15 +1462,20 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                             <span>المهمة مقفلة</span>
                           </span>
                         ) : isFull ? (
-                          <span className="text-[12px] text-[#86868b] bg-[#f5f5f7] px-3 py-1.5 rounded-full">
-                            اكتمل العدد
+                          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-full">
+                            <Lock className="w-3.5 h-3.5 text-rose-600" />
+                            <span>مقفلة · اكتمل العدد</span>
                           </span>
                         ) : (
                           <button
-                            onClick={() => setTaskForRegistration(task)}
+                            onClick={() =>
+                              currentStudent
+                                ? onConfirmRegistration(currentStudent, task.id)
+                                : setTaskForRegistration(task)
+                            }
                             className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-normal rounded-full transition-all flex items-center gap-1 shadow-none cursor-pointer"
                           >
-                            <span>التسجيل في المهمة</span>
+                            <span>اشتراك في المهمة</span>
                             <ChevronLeft className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -1334,6 +1498,24 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                   <p className="text-[12px] text-[#86868b]">
                     الموافقة الفورية على الطلبات واعتماد الساعات بعد انتهاء المبادرة والتأكد من مشاركة الطالب.
                   </p>
+                  {(() => {
+                    const supervisorSeats = getProgramSeatStats(selectedProgram, tasks, registrations);
+                    return (
+                      <p className="text-[12px] text-[#6e6e73] mt-1 flex flex-wrap items-center gap-x-2.5">
+                        <span>
+                          عدد المقاعد المتاحة: <strong className="font-mono tabular-nums text-[#1d1d1f]">{supervisorSeats.maxSeats ?? 'مفتوح'}</strong>
+                        </span>
+                        {supervisorSeats.maxSeats !== null && (
+                          <>
+                            <span aria-hidden="true" className="text-[#c7c7cc]">·</span>
+                            <span>
+                              المقاعد المتبقية: <strong className={`font-mono tabular-nums ${supervisorSeats.isFull ? 'text-rose-600' : 'text-emerald-700'}`}>{supervisorSeats.remainingSeats}</strong>
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 {selectedProgramRegs.filter((r) => r.approvalStatus === 'pending' || (r.attendanceStatus === 'registered' && !r.approvalStatus)).length > 0 && onApproveRegistration && (

@@ -48,7 +48,8 @@
         "hijriDate": { "type": "string", "description": "Date (Hijri)", "maxLength": 50 },
         "organizer": { "type": "string", "description": "Responsible entity/organizer", "maxLength": 200 },
         "description": { "type": "string", "description": "Program detailed description", "maxLength": 3000 },
-        "status": { "type": "string", "description": "Program execution status", "enum": ["ongoing", "upcoming", "completed"] }
+        "status": { "type": "string", "description": "Program execution status", "enum": ["ongoing", "upcoming", "completed"] },
+        "maxSeats": { "type": "number", "description": "Dedicated seats capacity limit for the initiative" }
       },
       "required": ["name", "domain", "stage", "gregorianDate"]
     },

@@ -28,6 +28,7 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
   const [organizer, setOrganizer] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'ongoing' | 'upcoming' | 'completed' | 'auto'>('auto');
+  const [maxSeats, setMaxSeats] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
@@ -42,6 +43,11 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
       setOrganizer(program.organizer);
       setDescription(program.description);
       setStatus(program.status || 'auto');
+      setMaxSeats(
+        typeof program.maxSeats === 'number' && program.maxSeats > 0
+          ? String(program.maxSeats)
+          : ''
+      );
       setShowDeleteConfirm(false);
     }
   }, [program, isOpen]);
@@ -62,6 +68,8 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
         ? 'المرحلة الابتدائية'
         : 'المرحلة المتوسطة';
 
+    const parsedSeats = parseInt(maxSeats, 10);
+
     onUpdateProgram({
       ...program,
       name: name.trim(),
@@ -75,6 +83,7 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
       organizer,
       description: description.trim(),
       status: status === 'auto' ? undefined : status,
+      maxSeats: !isNaN(parsedSeats) && parsedSeats > 0 ? parsedSeats : undefined,
     });
 
     onClose();
@@ -219,17 +228,37 @@ export const EditProgramModal: React.FC<EditProgramModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-              الجهة المنظمة / المدرسة
-            </label>
-            <input
-              type="text"
-              value={organizer}
-              onChange={(e) => setOrganizer(e.target.value)}
-              placeholder="مدرسة ابن الجوزي للموهوبين"
-              className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
+                الجهة المنظمة / المدرسة
+              </label>
+              <input
+                type="text"
+                value={organizer}
+                onChange={(e) => setOrganizer(e.target.value)}
+                placeholder="مدرسة ابن الجوزي للموهوبين"
+                className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
+                المقاعد المخصصة للمبادرة
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                value={maxSeats}
+                onChange={(e) => setMaxSeats(e.target.value)}
+                placeholder="اتركه فارغاً لعدد مفتوح"
+                className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3] font-mono tabular-nums"
+              />
+              <span className="block text-[10px] text-[#86868b] mt-1">
+                يُقفل التسجيل تلقائياً عند اكتمال العدد.
+              </span>
+            </div>
           </div>
 
           <div>

@@ -10,6 +10,7 @@ import {
   Filter,
   GraduationCap,
   HeartHandshake,
+  Lock,
   Minus,
   Phone,
   Plus,
@@ -23,7 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
-import { resolveActivityDomainMeta } from '../../utils/programHelpers';
+import { getProgramSeatStats, resolveActivityDomainMeta } from '../../utils/programHelpers';
 
 interface AttendanceManagerProps {
   programs: ActivityProgram[];
@@ -361,6 +362,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
             const defaultHours = targetTask?.hours || 2;
 
             const progDomainMeta = resolveActivityDomainMeta(prog.domain, prog.domainName);
+            const seatStats = getProgramSeatStats(prog, tasks, registrations);
 
             return (
               <div
@@ -382,18 +384,32 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                         <Calendar className="w-3 h-3 text-[#86868b]" />
                         {prog.gregorianDate}
                       </span>
+                      {seatStats.isFull && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full">
+                          <Lock className="w-3 h-3 text-rose-600" />
+                          <span>مقفلة · اكتمل العدد</span>
+                        </span>
+                      )}
                     </div>
 
                     <h2 className="text-xl font-semibold text-[#1d1d1f] tracking-tight">
                       {prog.name}
                     </h2>
 
-                    <div className="flex items-center gap-3 text-[12px] text-[#86868b]">
-                      <span>إجمالي الطلاب المتقدمين: <strong className="text-[#1d1d1f] font-mono">{regs.length}</strong></span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#86868b]">
+                      <span>إجمالي الطلاب المتقدمين: <strong className="text-[#1d1d1f] font-mono tabular-nums">{regs.length}</strong></span>
                       <span>·</span>
-                      <span>بانتظار الموافقة: <strong className={progPending > 0 ? 'text-amber-600 font-mono' : 'text-[#86868b]'}>{progPending}</strong></span>
+                      <span>بانتظار الموافقة: <strong className={progPending > 0 ? 'text-amber-600 font-mono tabular-nums' : 'text-[#86868b] font-mono tabular-nums'}>{progPending}</strong></span>
                       <span>·</span>
-                      <span>الساعات المقررة: <strong className="text-[#0071e3] font-mono">{defaultHours} ساعات</strong></span>
+                      <span>عدد المقاعد المتاحة: <strong className="text-[#1d1d1f] font-mono tabular-nums">{seatStats.maxSeats !== null ? seatStats.maxSeats : 'مفتوح'}</strong></span>
+                      {seatStats.maxSeats !== null && (
+                        <>
+                          <span>·</span>
+                          <span>المقاعد المتبقية: <strong className={`font-mono tabular-nums ${seatStats.isFull ? 'text-rose-600' : 'text-emerald-700'}`}>{seatStats.remainingSeats}</strong></span>
+                        </>
+                      )}
+                      <span>·</span>
+                      <span>الساعات المقررة: <strong className="text-[#0071e3] font-mono tabular-nums">{defaultHours} ساعات</strong></span>
                     </div>
                   </div>
 

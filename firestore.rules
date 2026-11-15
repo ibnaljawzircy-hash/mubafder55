@@ -59,7 +59,7 @@ service cloud.firestore {
       return data.keys().hasAll(['name', 'domain', 'stage', 'gregorianDate'])
         && data.keys().hasOnly([
           'id', 'name', 'domain', 'domainName', 'stage', 'stageLabel',
-          'month', 'gregorianDate', 'hijriDate', 'organizer', 'description', 'status'
+          'month', 'gregorianDate', 'hijriDate', 'organizer', 'description', 'status', 'maxSeats'
         ])
         && isOptionalString(data, 'id', 128)
         && data.name is string && data.name.size() > 0 && data.name.size() <= 300
@@ -72,7 +72,8 @@ service cloud.firestore {
         && isOptionalString(data, 'hijriDate', 50)
         && isOptionalString(data, 'organizer', 200)
         && isOptionalString(data, 'description', 3000)
-        && (!('status' in data) || (data.status is string && data.status in ['ongoing', 'upcoming', 'completed']));
+        && (!('status' in data) || (data.status is string && data.status in ['ongoing', 'upcoming', 'completed']))
+        && (!('maxSeats' in data) || (data.maxSeats is number && data.maxSeats >= 0 && data.maxSeats <= 10000));
     }
 
     function isValidTask(data) {

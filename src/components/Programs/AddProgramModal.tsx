@@ -23,6 +23,7 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
   const [organizer, setOrganizer] = useState('إدارة التعليم العام بينبع');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'ongoing' | 'upcoming' | 'completed' | 'auto'>('auto');
+  const [maxSeats, setMaxSeats] = useState('25');
 
   if (!isOpen) return null;
 
@@ -40,6 +41,8 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
         ? 'المرحلة الابتدائية'
         : 'المرحلة المتوسطة';
 
+    const parsedSeats = parseInt(maxSeats, 10);
+
     onAddProgram({
       name: name.trim(),
       domain: domainMeta.id,
@@ -52,12 +55,14 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
       organizer,
       description: description.trim() || 'برنامج ونشاط مدرسي ضمن خطة الأنشطة الطلابية.',
       status: status === 'auto' ? undefined : status,
+      maxSeats: !isNaN(parsedSeats) && parsedSeats > 0 ? parsedSeats : undefined,
     });
 
     onClose();
     setName('');
     setDescription('');
     setStatus('auto');
+    setMaxSeats('25');
   };
 
   return (
@@ -163,17 +168,37 @@ export const AddProgramModal: React.FC<AddProgramModalProps> = ({
           </div>
         </div>
 
-        <div>
-          <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
-            الجهة المنظمة / المدرسة
-          </label>
-          <input
-            type="text"
-            value={organizer}
-            onChange={(e) => setOrganizer(e.target.value)}
-            placeholder="مدرسة ابن الجوزي / مدرسة الإمام نافع"
-            className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
+              الجهة المنظمة / المدرسة
+            </label>
+            <input
+              type="text"
+              value={organizer}
+              onChange={(e) => setOrganizer(e.target.value)}
+              placeholder="مدرسة ابن الجوزي / مدرسة الإمام نافع"
+              className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-medium text-[#1d1d1f] mb-1">
+              المقاعد المخصصة للمبادرة
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={maxSeats}
+              onChange={(e) => setMaxSeats(e.target.value)}
+              placeholder="مثال: 25"
+              className="w-full px-4 py-2.5 text-[13px] bg-[#f5f5f7] border border-black/[0.08] rounded-2xl focus:outline-none focus:border-[#0071e3] font-mono tabular-nums"
+            />
+            <span className="block text-[10px] text-[#86868b] mt-1">
+              يُقفل التسجيل تلقائياً عند اكتمال هذا العدد (اتركه فارغاً لعدد مفتوح).
+            </span>
+          </div>
         </div>
 
         <div>

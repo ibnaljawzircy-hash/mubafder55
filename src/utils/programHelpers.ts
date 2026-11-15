@@ -150,3 +150,40 @@ export const sortProgramsChronologically = (programs: ActivityProgram[]): Activi
     return timeA - timeB;
   });
 };
+
+export interface ProgramSeatStats {
+  maxSeats: number | null;
+  occupiedSeats: number;
+  remainingSeats: number | null;
+  isFull: boolean;
+}
+
+/**
+ * Calculates dedicated seat usage and lock state for an initiative.
+ * Counts unique students with active (non-rejected, non-absent) registrations.
+ */
+export const getProgramSeatStats = (
+  program: ActivityProgram,
+  tasks: VolunteerTask[],
+  registrations: VolunteerRegistration[]
+): ProgramSeatStats => {
+  const progTaskIds = new Set(tasks.filter((t) => t.programId === program.id).map((t) => t.id));
+  const activeRegistrations = registrations.filter(
+    (r) =>
+      (r.programId === program.id || progTaskIds.has(r.taskId)) &&
+      r.approvalStatus !== 'rejected' &&
+      r.attendanceStatus !== 'absent'
+  );
+  const occupiedSeats = new Set(activeRegistrations.map((r) => r.studentId)).size;
+  const maxSeats =
+    typeof program.maxSeats === 'number' && program.maxSeats > 0 ? program.maxSeats : null;
+  const remainingSeats = maxSeats !== null ? Math.max(0, maxSeats - occupiedSeats) : null;
+  const isFull = maxSeats !== null && occupiedSeats >= maxSeats;
+
+  return {
+    maxSeats,
+    occupiedSeats,
+    remainingSeats,
+    isFull,
+  };
+};

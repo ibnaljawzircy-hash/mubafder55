@@ -13,6 +13,7 @@ import { StudentRoster } from './components/TeacherPortal/StudentRoster';
 import { TeacherDashboard } from './components/TeacherPortal/TeacherDashboard';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from './types';
 import { exportVolunteerReportExcel } from './utils/excel';
+import { getProgramSeatStats } from './utils/programHelpers';
 import {
   calculateBadgeLevel,
   getStoredPrograms,
@@ -304,6 +305,25 @@ export default function App() {
     }
 
     let task = tasks.find((t) => t.id === taskId);
+    const parentProgramId = task?.programId || (taskId.startsWith('task-prog-') ? taskId.replace('task-prog-', '') : undefined);
+    const parentProgram = parentProgramId ? programs.find((p) => p.id === parentProgramId) : undefined;
+
+    if (parentProgram) {
+      const seatStats = getProgramSeatStats(parentProgram, tasks, registrations);
+      const alreadyActiveInProg = registrations.some(
+        (r) =>
+          r.studentId === student.id &&
+          (r.programId === parentProgram.id ||
+            tasks.some((t) => t.id === r.taskId && t.programId === parentProgram.id)) &&
+          r.approvalStatus !== 'rejected' &&
+          r.attendanceStatus !== 'absent'
+      );
+      if (seatStats.isFull && !alreadyActiveInProg) {
+        showToast(`اكتمل العدد المخصص لمقاعد مبادرة (${parentProgram.name}) وتم قفل التسجيل`);
+        return;
+      }
+    }
+
     if (!task && taskId.startsWith('task-prog-')) {
       const progId = taskId.replace('task-prog-', '');
       const prog = programs.find((p) => p.id === progId);
@@ -317,7 +337,7 @@ export default function App() {
           description: prog.description,
           stage: prog.stage,
           hours: 2,
-          maxVolunteers: 25,
+          maxVolunteers: prog.maxSeats && prog.maxSeats > 0 ? prog.maxSeats : 25,
           date: prog.gregorianDate.replace(/\//g, '-'),
           time: '08:00 ص - 10:00 ص',
           location: 'مدرسة ابن الجوزي للموهوبين',
