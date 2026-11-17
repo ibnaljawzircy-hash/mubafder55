@@ -430,11 +430,15 @@ export default function App() {
       const newReg: VolunteerRegistration = {
         id: `reg-${Date.now()}`,
         taskId: task.id,
+        programId: task.programId,
+        programName: task.programName,
         studentId: currentStudent.id,
         studentName: currentStudent.name,
+        studentMobile: currentStudent.mobile,
         studentStage: currentStudent.stage,
         registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         attendanceStatus: 'attended',
+        approvalStatus: 'approved',
         hoursAwarded: 0,
         confirmedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         notes: 'حضر النشاط وأدخل رمز التحضير الفوري.',
@@ -918,7 +922,10 @@ export default function App() {
   };
 
   const pendingRequestsCount = registrations.filter(
-    (r) => r.approvalStatus === 'pending' || r.attendanceStatus === 'registered'
+    (r) =>
+      r.approvalStatus !== 'rejected' &&
+      r.attendanceStatus !== 'completed' &&
+      (r.approvalStatus === 'pending' || (r.attendanceStatus === 'registered' && !r.approvalStatus))
   ).length;
 
   const nonParticipatingCount = students.filter((stu) => {
@@ -975,6 +982,7 @@ export default function App() {
             onDeleteTask={handleDeleteTask}
             onConfirmRegistration={handleConfirmRegistration}
             onApproveRegistration={handleApproveRegistration}
+            onRejectRegistration={handleRejectRegistration}
             onCertifyHours={handleCertifyHours}
             onOpenCertificate={() => setActiveTab('certificate')}
             onOpenMyTasks={() => setActiveTab('my-tasks')}

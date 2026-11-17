@@ -22,6 +22,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
 import {
@@ -55,6 +56,7 @@ interface ProgramsExplorerProps {
   onDeleteTask?: (taskId: string) => void;
   onConfirmRegistration: (student: Student, taskId: string) => void;
   onApproveRegistration?: (registrationId: string) => void;
+  onRejectRegistration?: (registrationId: string) => void;
   onCertifyHours?: (registrationId: string, hours?: number) => void;
   onOpenCertificate?: () => void;
   onOpenMyTasks?: () => void;
@@ -78,6 +80,7 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
   onDeleteTask,
   onConfirmRegistration,
   onApproveRegistration,
+  onRejectRegistration,
   onCertifyHours,
   onOpenCertificate,
   onOpenMyTasks,
@@ -320,7 +323,12 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
 
   const selectedProgramRegs = registrations.filter((r) => {
     if (!selectedProgramId) return false;
-    return r.programId === selectedProgramId || tasks.some((t) => t.id === r.taskId && t.programId === selectedProgramId);
+    return (
+      r.programId === selectedProgramId ||
+      r.taskId === `task-prog-${selectedProgramId}` ||
+      tasks.some((t) => t.id === r.taskId && t.programId === selectedProgramId) ||
+      (selectedProgram?.name && r.programName?.trim() === selectedProgram.name.trim())
+    );
   });
 
   const currentStudentProgramReg = currentStudent
@@ -1552,10 +1560,13 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                     </thead>
                     <tbody className="divide-y divide-black/[0.04]">
                       {selectedProgramRegs.map((reg, idx) => {
+                        const isRejected = reg.approvalStatus === 'rejected';
+                        const isCompleted = !isRejected && reg.attendanceStatus === 'completed';
                         const isPending =
-                          reg.approvalStatus === 'pending' ||
-                          (reg.attendanceStatus === 'registered' && !reg.approvalStatus);
-                        const isCompleted = reg.attendanceStatus === 'completed';
+                          !isRejected &&
+                          !isCompleted &&
+                          (reg.approvalStatus === 'pending' ||
+                            (reg.attendanceStatus === 'registered' && !reg.approvalStatus));
                         const student = students.find((s) => s.id === reg.studentId);
                         const mobile = reg.studentMobile || student?.mobile || '-';
                         const targetTask = tasks.find((t) => t.id === reg.taskId);
@@ -1567,6 +1578,8 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                             className={`transition-colors ${
                               isPending
                                 ? 'bg-amber-50/25 hover:bg-amber-50/40'
+                                : isRejected
+                                ? 'bg-rose-50/20 hover:bg-rose-50/35'
                                 : isCompleted
                                 ? 'bg-emerald-50/15 hover:bg-emerald-50/30'
                                 : 'hover:bg-[#f5f5f7]/50'
@@ -1586,6 +1599,11 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                                   <Clock className="w-3 h-3" />
                                   <span>بانتظار الموافقة</span>
                                 </span>
+                              ) : isRejected ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                  <X className="w-3 h-3" />
+                                  <span>مرفوض / معتذر</span>
+                                </span>
                               ) : isCompleted ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
                                   <CheckCircle2 className="w-3 h-3" />
@@ -1599,10 +1617,11 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                               )}
                             </td>
                             <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-2">
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
                                 {/* زر موافق */}
-                                {isPending && onApproveRegistration && (
+                                {(isPending || isRejected) && onApproveRegistration && (
                                   <button
+                                    type="button"
                                     onClick={() => onApproveRegistration(reg.id)}
                                     className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium rounded-full transition-colors flex items-center gap-1 cursor-pointer"
                                     title="الموافقة على انضمام الطالب في المبادرة"
@@ -1612,14 +1631,28 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                                   </button>
                                 )}
 
+                                {/* زر رفض */}
+                                {isPending && onRejectRegistration && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRejectRegistration(reg.id)}
+                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-medium rounded-full border border-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="رفض أو اعتذار عن الطلب"
+                                  >
+                                    <X className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>رفض</span>
+                                  </button>
+                                )}
+
                                 {/* زر اعتماد الساعات */}
                                 {isCompleted ? (
                                   <span className="text-emerald-700 text-[11px] font-medium flex items-center gap-1 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
                                     <Award className="w-3.5 h-3.5 text-emerald-600" />
                                     <span>معتمد وموثق</span>
                                   </span>
-                                ) : onCertifyHours ? (
+                                ) : !isRejected && onCertifyHours ? (
                                   <button
+                                    type="button"
                                     onClick={() => onCertifyHours(reg.id, taskHours)}
                                     className="px-3.5 py-1.5 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[11px] font-medium rounded-full transition-colors flex items-center gap-1 cursor-pointer"
                                     title="اعتماد الساعات بعد انتهاء المبادرة والتأكد من مشاركة الطالب"
@@ -1630,7 +1663,11 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
                                 ) : null}
                               </div>
                               <span className="block text-[10px] text-[#86868b] mt-0.5">
-                                {isCompleted ? 'تم توثيق الساعات' : 'بعد انتهاء المبادرة والتأكد من مشاركته'}
+                                {isCompleted
+                                  ? 'تم توثيق الساعات'
+                                  : isRejected
+                                  ? 'تم رفض الطلب · يمكنك إعادة القبول'
+                                  : 'بعد انتهاء المبادرة والتأكد من مشاركته'}
                               </span>
                             </td>
                           </tr>

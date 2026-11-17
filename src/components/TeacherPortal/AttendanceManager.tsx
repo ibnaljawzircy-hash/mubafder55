@@ -56,10 +56,11 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   onDeleteRegistration,
 }) => {
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'completed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'completed' | 'rejected'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [manualProgramId, setManualProgramId] = useState<string>(programs[0]?.id || '');
   const [manualStudentId, setManualStudentId] = useState('');
+  const [manualAddError, setManualAddError] = useState<string | null>(null);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
 
   // Modal states for Editing Hours, Uncertifying, and Deleting
@@ -86,34 +87,52 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
     isCompleted: boolean;
   } | null>(null);
 
-  // Group registrations by Initiative / Program
-  // Helper to map taskId to program
-  const getProgramForTask = (taskId: string) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return null;
-    return programs.find((p) => p.id === task.programId) || null;
-  };
-
   // Enriched registrations with program and student info
   const enrichedRegistrations = registrations.map((reg) => {
     const task = tasks.find((t) => t.id === reg.taskId);
+    const derivedProgramId =
+      reg.programId ||
+      task?.programId ||
+      (reg.taskId?.startsWith('task-prog-') ? reg.taskId.replace('task-prog-', '') : undefined);
+    const normalizedRegProgName = (reg.programName || task?.programName || '').trim();
+
     const prog =
-      programs.find((p) => p.id === reg.programId) ||
-      (task ? programs.find((p) => p.id === task.programId) : null);
+      (derivedProgramId ? programs.find((p) => p.id === derivedProgramId) : null) ||
+      (normalizedRegProgName
+        ? programs.find((p) => p.name.trim() === normalizedRegProgName)
+        : null) ||
+      null;
     const student = students.find((s) => s.id === reg.studentId);
 
-    const isPending = reg.approvalStatus === 'pending' || (reg.attendanceStatus === 'registered' && !reg.approvalStatus);
-    const isCompleted = reg.attendanceStatus === 'completed';
-    const isApproved = (reg.approvalStatus === 'approved' || reg.attendanceStatus === 'attended') && !isCompleted;
+    const isRejected = reg.approvalStatus === 'rejected';
+    const isCompleted = !isRejected && reg.attendanceStatus === 'completed';
+    const isPending =
+      !isRejected &&
+      !isCompleted &&
+      (reg.approvalStatus === 'pending' ||
+        (reg.attendanceStatus === 'registered' && !reg.approvalStatus));
+    const isApproved =
+      !isRejected &&
+      !isCompleted &&
+      !isPending &&
+      (reg.approvalStatus === 'approved' || reg.attendanceStatus === 'attended');
+
+    const fallbackProgramKey =
+      prog?.id ||
+      derivedProgramId ||
+      (normalizedRegProgName ? `name:${normalizedRegProgName}` : 'unlinked-program');
 
     return {
       ...reg,
       task,
       program: prog,
+      resolvedProgramId: prog?.id || derivedProgramId,
+      fallbackProgramKey,
       student,
       isPending,
       isApproved,
       isCompleted,
+      isRejected,
     };
   });
 
@@ -122,6 +141,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   const pendingCount = enrichedRegistrations.filter((r) => r.isPending).length;
   const approvedCount = enrichedRegistrations.filter((r) => r.isApproved).length;
   const completedCount = enrichedRegistrations.filter((r) => r.isCompleted).length;
+  const rejectedCount = enrichedRegistrations.filter((r) => r.isRejected).length;
   const totalHoursAwarded = enrichedRegistrations
     .filter((r) => r.isCompleted)
     .reduce((sum, r) => sum + r.hoursAwarded, 0);
@@ -130,56 +150,98 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   const filteredRegs = enrichedRegistrations.filter((r) => {
     // Filter by program
     if (selectedProgramFilter !== 'all') {
-      const progId = r.program?.id || r.task?.programId;
-      if (progId !== selectedProgramFilter) return false;
+      if (r.resolvedProgramId !== selectedProgramFilter) return false;
     }
 
     // Filter by status
     if (statusFilter === 'pending' && !r.isPending) return false;
     if (statusFilter === 'approved' && !r.isApproved) return false;
     if (statusFilter === 'completed' && !r.isCompleted) return false;
+    if (statusFilter === 'rejected' && !r.isRejected) return false;
 
     // Search query
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       const matchName = r.studentName.toLowerCase().includes(q);
       const matchMobile = r.studentMobile?.includes(q) || r.student?.mobile.includes(q);
-      const matchProgram = r.program?.name.toLowerCase().includes(q) || r.programName?.toLowerCase().includes(q);
+      const matchProgram =
+        r.program?.name.toLowerCase().includes(q) ||
+        r.programName?.toLowerCase().includes(q) ||
+        r.task?.title.toLowerCase().includes(q);
       if (!matchName && !matchMobile && !matchProgram) return false;
     }
 
     return true;
   });
 
-  // Group the filtered registrations by Program / Initiative
-  // Programs that have registrations
-  const programsWithRegs = programs
+  // Group the filtered registrations by Program / Initiative (and preserve unmatched/deleted-program requests)
+  const matchedProgramGroups = programs
     .map((prog) => {
-      const progRegs = filteredRegs.filter(
-        (r) => (r.program?.id === prog.id) || (r.task?.programId === prog.id) || (r.programId === prog.id)
-      );
+      const progRegs = filteredRegs.filter((r) => r.program?.id === prog.id);
       return {
         prog,
         regs: progRegs,
+        isArchivedProgram: false,
       };
     })
     .filter((group) => {
-      // If user selected a specific program, show only that
       if (selectedProgramFilter !== 'all') {
         return group.prog.id === selectedProgramFilter;
       }
-      // If filtering by search/status, only show programs that have matching registrations
       return group.regs.length > 0;
     });
 
+  const unmatchedRegsMap = new Map<string, typeof filteredRegs>();
+  filteredRegs
+    .filter((r) => !r.program)
+    .forEach((r) => {
+      const key = r.fallbackProgramKey;
+      const existing = unmatchedRegsMap.get(key) || [];
+      existing.push(r);
+      unmatchedRegsMap.set(key, existing);
+    });
+
+  const unmatchedProgramGroups = Array.from(unmatchedRegsMap.entries()).map(([key, regs]) => {
+    const sample = regs[0];
+    const fallbackProg: ActivityProgram = {
+      id: key,
+      name:
+        sample.programName ||
+        sample.task?.programName ||
+        sample.task?.title ||
+        'طلب انضمام لمبادرة غير مرتبطة بمبادرة قائمة',
+      domain: sample.task?.domain || 'citizenship_life',
+      domainName: resolveActivityDomainMeta(sample.task?.domain || 'citizenship_life').name,
+      stage: sample.studentStage || 'all',
+      stageLabel:
+        sample.studentStage === 'primary'
+          ? 'المرحلة الابتدائية'
+          : sample.studentStage === 'intermediate'
+          ? 'المرحلة المتوسطة'
+          : 'جميع المراحل',
+      month: '-',
+      gregorianDate: sample.registeredAt?.slice(0, 10) || '-',
+      hijriDate: '-',
+      organizer: 'مدرسة ابن الجوزي للموهوبين',
+      description: '',
+    };
+    return {
+      prog: fallbackProg,
+      regs,
+      isArchivedProgram: true,
+    };
+  });
+
+  const programsWithRegs = [...matchedProgramGroups, ...unmatchedProgramGroups];
+
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
+    setManualAddError(null);
     if (!manualProgramId || !manualStudentId) return;
 
-    // Find or create task for program
-    let task = tasks.find((t) => t.programId === manualProgramId);
+    const task = tasks.find((t) => t.programId === manualProgramId);
     if (!task) {
-      alert('يرجى التأكد من وجود مهمة في هذه المبادرة أولاً.');
+      setManualAddError('يرجى التأكد من وجود مهمة في هذه المبادرة أولاً.');
       return;
     }
 
@@ -317,6 +379,9 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
               <option value="pending">بانتظار موافقة المشرف ({pendingCount})</option>
               <option value="approved">تم قبول الانضمام ({approvedCount})</option>
               <option value="completed">تم اعتماد وتوثيق الساعات ({completedCount})</option>
+              {rejectedCount > 0 && (
+                <option value="rejected">مرفوض / معتذر ({rejectedCount})</option>
+              )}
             </select>
           </div>
 
@@ -519,6 +584,11 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                                   <Clock className="w-3 h-3 text-amber-600" />
                                   <span>طلب جديد بانتظار الموافقة</span>
                                 </span>
+                              ) : reg.isRejected ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                  <X className="w-3 h-3 text-rose-600" />
+                                  <span>مرفوض / معتذر</span>
+                                </span>
                               ) : reg.isCompleted ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -563,15 +633,29 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                             {/* 8. Action Buttons: 'تعديل الساعات', 'عدم الاعتماد', 'حذف من المبادرة' */}
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                                {/* If pending: Approve button */}
-                                {reg.isPending && (
+                                {/* If pending or rejected: Approve button */}
+                                {(reg.isPending || reg.isRejected) && (
                                   <button
+                                    type="button"
                                     onClick={() => onApproveRegistration(reg.id)}
                                     className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-none"
                                     title="الموافقة على انضمام الطالب في المبادرة"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                     <span>موافق</span>
+                                  </button>
+                                )}
+
+                                {/* Explicit Reject button if pending */}
+                                {reg.isPending && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRejectRegistration(reg.id)}
+                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-medium rounded-full border border-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="رفض أو اعتذار عن الطلب"
+                                  >
+                                    <X className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>رفض</span>
                                   </button>
                                 )}
 
@@ -617,8 +701,8 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                                       <span>عدم الاعتماد</span>
                                     </button>
                                   </>
-                                ) : (
-                                  /* If not completed (pending or approved):
+                                ) : !reg.isRejected ? (
+                                  /* If not completed and not rejected (pending or approved):
                                      Allow certifying default hours or customizing
                                   */
                                   <div className="flex items-center gap-1">
@@ -649,19 +733,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                                       <Edit3 className="w-3 h-3" />
                                     </button>
                                   </div>
-                                )}
-
-                                {/* Optional Reject (only if pending) */}
-                                {reg.isPending && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onRejectRegistration(reg.id)}
-                                    className="p-1.5 text-[#86868b] hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
-                                    title="رفض أو اعتذار عن الطلب"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+                                ) : null}
 
                                 {/* Delete Registration from Initiative Button */}
                                 <button
@@ -684,6 +756,8 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                               <span className="block text-[10px] text-[#86868b] mt-1 text-center">
                                 {reg.isCompleted
                                   ? 'ساعات موثقة · خيارات التعديل والإلغاء متاحة'
+                                  : reg.isRejected
+                                  ? 'تم رفض الطلب · يمكنك إعادة القبول أو الحذف'
                                   : 'بعد انتهاء المبادرة والتأكد من مشاركة الطالب'}
                               </span>
                             </td>
@@ -760,10 +834,19 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
                 </select>
               </div>
 
+              {manualAddError && (
+                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-[12px]">
+                  {manualAddError}
+                </div>
+              )}
+
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddStudentModal(false)}
+                  onClick={() => {
+                    setManualAddError(null);
+                    setShowAddStudentModal(false);
+                  }}
                   className="px-4 py-2 text-[12px] text-[#86868b] hover:text-[#1d1d1f]"
                 >
                   إلغاء
