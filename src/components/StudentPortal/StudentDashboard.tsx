@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Award, Calendar, CheckCircle2, Clock, MapPin, QrCode, Search, Sparkles, Star, UserCheck } from 'lucide-react';
-import { Student, VolunteerRegistration, VolunteerTask } from '../../types';
+import { Award, Calendar, CheckCircle2, Clock, QrCode, Star, UserCheck } from 'lucide-react';
+import { ActivityProgram, Student, VolunteerRegistration, VolunteerTask } from '../../types';
+import { VolunteerIndicators } from '../VolunteerIndicators';
 
 interface StudentDashboardProps {
   student: Student;
+  programs?: ActivityProgram[];
+  students?: Student[];
   tasks: VolunteerTask[];
   registrations: VolunteerRegistration[];
   onCheckInByCode: (code: string) => { success: boolean; message: string };
@@ -14,6 +17,8 @@ interface StudentDashboardProps {
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   student,
+  programs = [],
+  students = [],
   tasks,
   registrations,
   onCheckInByCode,
@@ -122,6 +127,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Platform Strategic Indicators (Same as Supervisor Page) */}
+      <VolunteerIndicators
+        programs={programs}
+        students={students}
+        tasks={tasks}
+        registrations={registrations}
+      />
 
       {/* Quick Check-in Box - Apple Style */}
       <div className="bg-[#ffffff] rounded-3xl p-6 border border-black/[0.04] shadow-[0_2px_8px_rgba(0,0,0,0.02)]">

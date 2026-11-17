@@ -39,6 +39,7 @@ import { EditTaskModal } from './EditTaskModal';
 import { WhatsAppShareModal } from './WhatsAppShareModal';
 import { ImportProgramsModal } from './ImportProgramsModal';
 import { TaskRegistrationModal } from '../StudentPortal/TaskRegistrationModal';
+import { VolunteerIndicators } from '../VolunteerIndicators';
 
 interface ProgramsExplorerProps {
   programs: ActivityProgram[];
@@ -490,6 +491,15 @@ export const ProgramsExplorer: React.FC<ProgramsExplorerProps> = ({
               </div>
             )}
           </div>
+
+          {/* Platform Strategic Indicators directly below the platform title */}
+          <VolunteerIndicators
+            programs={programs}
+            students={students}
+            tasks={tasks}
+            registrations={registrations}
+            compact
+          />
 
           {/* Timeline & Status Filter Tabs - Single Row */}
           <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 pt-1 border-b border-black/[0.04] pb-3 overflow-x-auto">

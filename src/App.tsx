@@ -995,6 +995,8 @@ export default function App() {
         {activeTab === 'my-tasks' && currentStudent && (
           <StudentDashboard
             student={currentStudent}
+            programs={programs}
+            students={students}
             tasks={tasks}
             registrations={registrations}
             onCheckInByCode={handleCheckInByCode}
